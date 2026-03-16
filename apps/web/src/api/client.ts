@@ -22,14 +22,24 @@ apiClient.interceptors.request.use(
   }
 );
 
-// 响应拦截器 - 直接返回 data
+// 响应拦截器 - 处理后端统一返回格式 {success, data, error}
 apiClient.interceptors.response.use(
   (response) => {
-    return response.data;
+    const result = response.data;
+    // 如果后端返回 {success: true, data: ...} 格式，提取 data
+    if (result && typeof result === 'object' && 'success' in result) {
+      if (result.success) {
+        return result.data;
+      } else {
+        return Promise.reject(new Error(result.error || '请求失败'));
+      }
+    }
+    return result;
   },
   (error) => {
     console.error('API Error:', error);
-    return Promise.reject(error);
+    const message = error.response?.data?.error || error.message || '请求失败';
+    return Promise.reject(new Error(message));
   }
 );
 

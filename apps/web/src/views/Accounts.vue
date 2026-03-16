@@ -151,7 +151,7 @@ async function loadAccounts() {
     if (filterStatus.value) params.status = filterStatus.value;
 
     const result = await getAccountsApi(params);
-    accounts.value = (result as any) || [];
+    accounts.value = (result as any[]) || [];
   } catch (error: any) {
     ElMessage.error('加载账号列表失败：' + (error.message || '未知错误'));
   } finally {

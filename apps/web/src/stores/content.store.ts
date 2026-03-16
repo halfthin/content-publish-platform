@@ -46,8 +46,8 @@ export const useContentStore = defineStore('content', () => {
       const mergeParams = { ...filterParams.value, ...params };
       const result = await contentApi.getContents(mergeParams);
       
-      contents.value = result.data;
-      pagination.value = result.pagination;
+      contents.value = (result as any).data || result || [];
+      pagination.value = (result as any).pagination || pagination.value;
       filterParams.value = mergeParams;
       
       return result;
@@ -65,7 +65,7 @@ export const useContentStore = defineStore('content', () => {
 
     try {
       const result = await contentApi.getContentById(id);
-      currentContent.value = result.data;
+      currentContent.value = (result as any).data || result;
       return result;
     } catch (err: unknown) {
       error.value = err instanceof Error ? err.message : '加载失败';

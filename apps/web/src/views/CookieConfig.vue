@@ -178,7 +178,7 @@ const rules: FormRules = {
 async function loadAccounts() {
   try {
     const result = await getAccountsApi();
-    accounts.value = (result as any) || [];
+    accounts.value = (result as any[]) || [];
 
     // 如果有 query 参数，自动选择账号
     if (accountIdFromQuery.value) {

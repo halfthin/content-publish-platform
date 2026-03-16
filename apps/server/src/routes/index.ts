@@ -1,4 +1,5 @@
 import { Elysia } from 'elysia';
+import { cors } from '@elysiajs/cors';
 import { logger } from '../config/logger';
 import { setupAccountsRoutes } from './accounts';
 import { setupContentsRoutes } from './contents';
@@ -7,6 +8,12 @@ import { setupPublishStatusRoutes } from './publish-status';
 export function setupRoutes() {
   return (
     new Elysia()
+      .use(cors({
+        origin: ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174'],
+        credentials: true,
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization'],
+      }))
       .get('/', () => ({
         name: 'Content Publish Platform API',
         version: '1.0.0',
