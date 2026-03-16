@@ -6,7 +6,7 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "concurrently \"bun --cwd apps/server run dev\" \"bun --cwd apps/web run dev\"",
+    "dev": "concurrently \"cd apps/server && bun run dev\" \"cd apps/web && bun run dev\"",
     "dev:server": "bun --cwd apps/server run dev",
     "dev:web": "bun --cwd apps/web run dev",
     "build": "bun --cwd apps/web run build",
