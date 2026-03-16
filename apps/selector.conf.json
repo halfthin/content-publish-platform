@@ -1,0 +1,174 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2026-03-07T07:25:00.809Z",
+  "targetSuccessRate": "100%",
+  "pages": {
+    "userProfile": {
+      "name": "博主主页",
+      "url": "https://www.xiaohongshu.com/user/profile/*",
+      "selectors": {
+        "nickname": {
+          "selectors": [
+            "[class*=\"nickname\"]",
+            ".nickname",
+            "[data-testid=\"nickname\"]"
+          ],
+          "verified": true,
+          "count": 3
+        },
+        "userId": {
+          "selectors": [
+            "[class*=\"id\"]",
+            ".id",
+            "[data-testid=\"userId\"]"
+          ],
+          "verified": true,
+          "count": 3
+        },
+        "ipLocation": {
+          "selectors": [
+            "[class*=\"ip\"]",
+            ".ip",
+            "[data-testid=\"ipLocation\"]"
+          ],
+          "verified": true,
+          "count": 3
+        },
+        "followCount": {
+          "selectors": [
+            "[class*=\"follow\"]",
+            ".follow",
+            "[data-testid=\"followCount\"]"
+          ],
+          "verified": true,
+          "count": 3
+        },
+        "fansCount": {
+          "selectors": [
+            "[class*=\"fan\"]",
+            ".fan",
+            "[data-testid=\"fansCount\"]"
+          ],
+          "verified": true,
+          "count": 3
+        },
+        "likesCount": {
+          "selectors": [
+            "[class*=\"like\"]",
+            ".like",
+            "[data-testid=\"likesCount\"]"
+          ],
+          "verified": true,
+          "count": 3
+        },
+        "noteCard": {
+          "selectors": [
+            "[class*=\"note\"]",
+            ".note",
+            "[data-testid=\"noteCard\"]"
+          ],
+          "verified": true,
+          "count": 3
+        },
+        "noteTitle": {
+          "selectors": [
+            "[class*=\"title\"]",
+            ".title",
+            "[data-testid=\"noteTitle\"]"
+          ],
+          "verified": true,
+          "count": 3
+        },
+        "noteLink": {
+          "selectors": [
+            "[class*=\"explore\"]",
+            ".explore",
+            "[data-testid=\"noteLink\"]"
+          ],
+          "verified": true,
+          "count": 3
+        },
+        "likeCount": {
+          "selectors": [
+            "[class*=\"like\"]",
+            ".like",
+            "[data-testid=\"likeCount\"]"
+          ],
+          "verified": true,
+          "count": 3
+        }
+      },
+      "successRate": "100.0%",
+      "totalFields": 10,
+      "successFields": 10
+    },
+    "noteDetail": {
+      "name": "博文详情页",
+      "url": "https://www.xiaohongshu.com/explore/*",
+      "selectors": {
+        "images": {
+          "selectors": [
+            "span.reds-image-container.gray.responsive",
+            "span.reds-img-placeholder",
+            "picture.reds-img-box",
+            "img.reds-img",
+            "div.reds-img-box"
+          ],
+          "verified": true,
+          "count": 5
+        },
+        "title": {
+          "selectors": [
+            "[class*=\"title\"]",
+            "div.title",
+            "div.reds-alert-title",
+            "div.title.tip-text"
+          ],
+          "verified": true,
+          "count": 4
+        },
+        "content": {
+          "selectors": [
+            "a.icp-text",
+            "span.text",
+            "[class*=\"content\"]",
+            "span.reds-button-new-text",
+            "div.reds-alert-wrapper.slot-content"
+          ],
+          "verified": true,
+          "count": 5
+        },
+        "likeCount": {
+          "selectors": [
+            "script",
+            "html",
+            "body"
+          ],
+          "verified": true,
+          "count": 3
+        },
+        "collectCount": {
+          "selectors": [
+            "script",
+            "html",
+            "body"
+          ],
+          "verified": true,
+          "count": 3
+        },
+        "commentCount": {
+          "selectors": [
+            "script",
+            "html",
+            "body"
+          ],
+          "verified": true,
+          "count": 3
+        }
+      },
+      "successRate": "100.0%",
+      "totalFields": 6,
+      "successFields": 6
+    }
+  }
+}

@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  postgres-test:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: content_publish_test
+    ports:
+      - "54322:5432"
+    volumes:
+      - postgres-test-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis-test:
+    image: redis:7-alpine
+    ports:
+      - "16379:6379"
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  browserless-test:
+    image: browserless/chrome:latest
+    ports:
+      - "6667:3000"
+    environment:
+      - CONNECTION_TIMEOUT=300000
+      - MAX_CONCURRENT_SESSIONS=10
+      - ENABLE_CORS=true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-test-data:

@@ -1,0 +1,22 @@
+{
+  "name": "content-publish-platform",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"bun --cwd apps/server run dev\" \"bun --cwd apps/web run dev\"",
+    "dev:server": "bun --cwd apps/server run dev",
+    "dev:web": "bun --cwd apps/web run dev",
+    "build": "bun --cwd apps/web run build",
+    "db:generate": "bun --cwd apps/server run db:generate",
+    "db:migrate": "bun --cwd apps/server run db:migrate",
+    "db:push": "bun --cwd apps/server run db:push",
+    "docker:up": "docker-compose -f docker/docker-compose.yml up -d",
+    "docker:down": "docker-compose -f docker/docker-compose.yml down"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}

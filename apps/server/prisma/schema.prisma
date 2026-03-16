@@ -1,0 +1,217 @@
+// schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 账号分组
+model AccountGroup {
+  id          String    @id @default(uuid())
+  platform    String    // xiaohongshu, weibo, douyin, bilibili, wechat
+  name        String    // A 组、B 组、C 组
+  description String?
+  accounts    Account[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([platform, name])
+  @@index([platform])
+}
+
+// 平台账号
+model Account {
+  id              String       @id @default(uuid())
+  platform        String       // xiaohongshu, weibo, douyin, bilibili, wechat
+  name            String       // 账号显示名称
+  username        String?      // 登录用户名
+  groupId         String
+  group           AccountGroup @relation(fields: [groupId], references: [id])
+  
+  // Cookie 加密存储
+  encryptedCookies String?     // 加密后的 cookie 数据（字符串格式）
+  cookiePassword   String?     // Cookie 加密密码（可选，默认使用全局密钥）
+  cookieUpdatedAt  DateTime?   // Cookie 最后更新时间
+  
+  // Cookie 健康度监控（新增）
+  cookieHealthScore  Int?      @default(100)  // Cookie健康度分数 0-100
+  lastCookieCheckAt  DateTime?                // 最后检查时间
+  cookieExpiryWarning Boolean? @default(false) // 过期预警
+  cookieRefreshAttempts Int?   @default(0)    // 刷新尝试次数
+  cookieLastRefreshAt DateTime?               // 最后刷新时间
+  
+  // 账号状态
+  status          AccountStatus @default(ACTIVE)
+  loginStatus     LoginStatus   @default(UNKNOWN)
+  dailyLimit      Int           @default(10)  // 每日发布限制
+  todayPublished  Int           @default(0)  // 今日已发布
+  lastPublishedAt DateTime?
+  
+  // 健康度监控
+  healthScore     Int           @default(100) // 0-100
+  warningFlags    String[]      // 限流、异常等标记
+  
+  // 元数据
+  notes           String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  publishLogs     PublishLog[]
+  scheduledJobs   ScheduledJob[]
+
+  @@index([platform, status])
+  @@index([groupId])
+}
+
+enum AccountStatus {
+  ACTIVE      // 正常
+  INACTIVE    // 停用
+  SUSPENDED   // 暂停使用
+  BANNED      // 被封禁
+}
+
+enum LoginStatus {
+  LOGGED_IN   // 已登录
+  EXPIRED     // Cookie 过期
+  UNKNOWN     // 未知
+  CHECKING    // 检测中
+}
+
+// 内容
+model Content {
+  id          String        @id @default(uuid())
+  title       String
+  description String?
+  type        ContentType   // IMAGE, VIDEO, MIXED
+  status      ContentStatus @default(PENDING)
+  
+  // 文件路径
+  basePath    String        // 内容根目录（相对路径）
+  images      String[]      // 图片路径数组
+  video       String?       // 视频路径
+  mdFile      String        // markdown 文案路径
+  
+  // 审核信息
+  reviewedBy  String?       // 审核人
+  reviewedAt  DateTime?
+  reviewNote  String?       // 审核备注
+  
+  // 标签和分类
+  tags        String[]
+  category    String?
+  
+  // 统计
+  publishCount Int          @default(0) // 发布次数（多账号）
+  
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  
+  publishLogs PublishLog[]
+  scheduledJobs ScheduledJob[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum ContentType {
+  IMAGE
+  VIDEO
+  MIXED
+}
+
+enum ContentStatus {
+  PENDING     // 待审核
+  APPROVED    // 已通过
+  REJECTED    // 已拒绝
+  PUBLISHING  // 发布中
+  PUBLISHED   // 已发布
+  FAILED      // 发布失败
+}
+
+// 发布日志
+model PublishLog {
+  id          String        @id @default(uuid())
+  contentId   String
+  content     Content       @relation(fields: [contentId], references: [id])
+  accountId   String
+  account     Account       @relation(fields: [accountId], references: [id])
+  
+  platform    String        // 冗余字段，便于查询
+  status      PublishStatus @default(PENDING)
+  
+  // 发布详情
+  publishedUrl String?      // 发布后链接
+  errorMessage String?      // 错误信息
+  errorCode    String?      // 错误码
+  retryCount   Int          @default(0)
+  maxRetries   Int          @default(3)
+  
+  // 时间戳
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([contentId])
+  @@index([accountId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum PublishStatus {
+  PENDING           // 等待执行
+  QUEUED            // 已进入队列
+  RUNNING           // 执行中
+  NEEDS_AUTH        // 需要人工介入
+  USER_INTERVENING  // 用户介入中
+  RESUMED           // 已恢复
+  SUCCESS           // 成功
+  FAILED            // 失败
+  CANCELLED         // 已取消
+  RETRYING          // 重试中
+}
+
+// 定时任务
+model ScheduledJob {
+  id          String            @id @default(uuid())
+  contentId   String
+  content     Content           @relation(fields: [contentId], references: [id])
+  accountId   String
+  account     Account           @relation(fields: [accountId], references: [id])
+  
+  scheduledAt DateTime          // 计划执行时间
+  status      ScheduledStatus   @default(SCHEDULED)
+  bullJobId   String?           // BullMQ job ID
+  
+  // 执行结果
+  executedAt  DateTime?
+  result      Json?             // 执行结果
+  
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([scheduledAt])
+  @@index([status])
+}
+
+enum ScheduledStatus {
+  SCHEDULED   // 已计划
+  QUEUED      // 已入队
+  EXECUTING   // 执行中
+  COMPLETED   // 完成
+  CANCELLED   // 已取消
+  FAILED      // 失败
+}
+
+// 系统配置
+model SystemConfig {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       Json
+  description String?
+  updatedAt   DateTime @updatedAt
+}

@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.server
+    container_name: content-publish-server
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@host.docker.internal:54321/content-publish
+      REDIS_URL: redis://halfthin:${REDIS_PASSWORD:-redis}@host.docker.internal:16378/0
+      COOKIE_ENCRYPTION_KEY: ${COOKIE_ENCRYPTION_KEY}
+      COOKIE_ENCRYPTION_SALT: ${COOKIE_ENCRYPTION_SALT}
+      BROWSERLESS_URL: ${BROWSERLESS_URL:-ws://browserless:3000/playwright}
+      CONTENT_DIR: /app/content
+    ports:
+      - "50001:3000"
+    volumes:
+      - ../content:/app/content
+    networks:
+      - web_net
+
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.web
+    container_name: content-publish-web
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "50000:80"
+    depends_on:
+      - server
+    networks:
+      - web_net
+
+networks:
+  web_net:
+    external: true

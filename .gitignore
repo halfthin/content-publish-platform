@@ -1,0 +1,42 @@
+# 临时工作目录
+.workspace/
+docs-workspace/
+
+# 临时文档文件
+*.tmp.md
+*.bak.md
+*.old.md
+debug-*.html
+card-*.html
+search-page-*.html
+
+# 测试输出
+test-output/
+logs/
+*.log
+
+# 截图
+content/test-images/
+*.png
+*.jpg
+
+# 依赖
+node_modules/
+
+# 环境配置（本地）
+.env.local
+.env.*.local
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 构建输出
+dist/
+build/

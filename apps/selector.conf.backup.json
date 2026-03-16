@@ -1,0 +1,199 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2026-03-07T06:59:21.599Z",
+  "pages": {
+    "home": {
+      "name": "首页",
+      "url": "https://www.xiaohongshu.com/explore",
+      "selectors": {
+        "noteCard": [
+          "section.note-item",
+          "div#mfContainer",
+          "div#exploreFeeds",
+          "div.feeds-loading"
+        ],
+        "noteTitle": [
+          "a.title"
+        ],
+        "noteLink": [
+          "section.note-item",
+          "a#link-guide",
+          "a.active.router-link-exact-active",
+          "a.link-wrapper",
+          "li.link-wrapper.bottom-channel"
+        ],
+        "authorName": [
+          "div.author-wrapper",
+          "a.author",
+          "img.author-avatar",
+          "span.name",
+          "li.user.side-bar-component"
+        ],
+        "authorLink": [
+          "div.author-wrapper",
+          "a.author",
+          "img.author-avatar",
+          "li.user.side-bar-component"
+        ],
+        "searchInput": [
+          "input#search-input",
+          "div.search-icon",
+          "button.reds-button-new.min-width-search-icon",
+          "div.input-box",
+          "div.input-button"
+        ],
+        "searchButton": [
+          "input#search-input",
+          "div.search-icon",
+          "button.reds-button-new.min-width-search-icon",
+          "div.input-button",
+          "span.reds-button-new-box"
+        ]
+      }
+    },
+    "search": {
+      "name": "搜索结果页",
+      "url": "https://www.xiaohongshu.com/search_result?keyword=%E7%A9%BF%E6%90%AD&source=web_explore_feed",
+      "selectors": {
+        "noteCard": [
+          "section.note-item",
+          "div.card-bottom-wrapper",
+          "div.feeds-page",
+          "div.feeds-container",
+          "div.feeds-loading"
+        ],
+        "noteTitle": [
+          "a.title"
+        ],
+        "noteLink": [
+          "section.note-item",
+          "a.link-wrapper",
+          "li.link-wrapper.bottom-channel",
+          "a.link-wrapper.bottom-channel",
+          "div.link-wrapper"
+        ],
+        "authorName": [
+          "a.author",
+          "img.author-avatar",
+          "div.name-time-wrapper",
+          "div.name",
+          "li.user.side-bar-component"
+        ],
+        "authorLink": [
+          "a.author",
+          "img.author-avatar",
+          "li.user.side-bar-component"
+        ]
+      }
+    },
+    "userProfile": {
+      "name": "博主主页",
+      "url": "https://www.xiaohongshu.com/user/profile/*",
+      "selectors": {
+        "nickname": [
+          "div.user-nickname",
+          "div.user-name",
+          "span.name",
+          "li.user.side-bar-component",
+          "div#userPageContainer"
+        ],
+        "userId": [
+          "button.reds-button-new.min-width-search-icon",
+          "div.side-bar",
+          "li.user.side-bar-component",
+          "div.divider",
+          "div.app-info.outside"
+        ],
+        "ipLocation": [
+          "div.tip-container",
+          "span.tip-text"
+        ],
+        "followCount": [
+          "button.reds-button-new.follow-button"
+        ],
+        "fansCount": [
+          "[class*=\"fansCount\"]",
+          ".fansCount",
+          "[data-testid=\"fansCount\"]",
+          "[data-e2e=\"fansCount\"]"
+        ],
+        "likesCount": [
+          "span.like-wrapper.like-active",
+          "span.like-lottie"
+        ],
+        "noteList": [
+          "section.note-item",
+          "ul.channel-list",
+          "div.channel-list-content",
+          "div.tertiary.center",
+          "div.reds-tab-item.active"
+        ],
+        "noteCard": [
+          "section.note-item",
+          "div.reds-tab-item.active",
+          "div.reds-tab-item.sub-tab-list",
+          "div.reds-tab-item__left",
+          "div.tab-content-item"
+        ],
+        "noteTitle": [
+          "a.title"
+        ],
+        "noteLink": [
+          "section.note-item",
+          "a.link-wrapper",
+          "li.link-wrapper.bottom-channel",
+          "a.link-wrapper.bottom-channel",
+          "div.link-wrapper"
+        ],
+        "likeCount": [
+          "span.like-wrapper.like-active",
+          "span.like-lottie",
+          "span.count"
+        ]
+      }
+    },
+    "noteDetail": {
+      "name": "博文详情页",
+      "url": "https://www.xiaohongshu.com/explore/*",
+      "selectors": {
+        "images": [
+          "span.reds-image-container.gray",
+          "span.reds-img-placeholder",
+          "picture.reds-img-box",
+          "img.reds-img",
+          "div.reds-img-box"
+        ],
+        "title": [
+          "div.title",
+          "div.title.tip-text",
+          "div.reds-alert-title"
+        ],
+        "content": [
+          "div.channel-list-content",
+          "div.with-side-bar.main-content",
+          "div.course-content",
+          "div.reds-alert-wrapper.slot-content",
+          "div.reds-alert-content"
+        ],
+        "likeCount": [
+          "[class*=\"likeCount\"]",
+          ".likeCount",
+          "[data-testid=\"likeCount\"]",
+          "[data-e2e=\"likeCount\"]"
+        ],
+        "collectCount": [
+          "[class*=\"collectCount\"]",
+          ".collectCount",
+          "[data-testid=\"collectCount\"]",
+          "[data-e2e=\"collectCount\"]"
+        ],
+        "commentCount": [
+          "[class*=\"commentCount\"]",
+          ".commentCount",
+          "[data-testid=\"commentCount\"]",
+          "[data-e2e=\"commentCount\"]"
+        ]
+      }
+    }
+  }
+}
