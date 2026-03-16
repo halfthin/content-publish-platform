@@ -5,6 +5,7 @@ import { browserPool, initializeBrowser } from './config/playwright';
 import { disconnectPrisma } from './config/prisma';
 import { publishQueue, startAllWorkers } from './queues/publish-queue';
 import { setupRoutes } from './routes';
+import { setupWebSocket } from './websocket/server';
 import { startFileWatcher, stopFileWatcher } from './services/file-watcher.service';
 
 // Load environment variables from project root .env file
@@ -12,10 +13,13 @@ config({ path: '../../.env' });
 
 const PORT = process.env.PORT || 3000;
 
-const app = new Elysia().use(setupRoutes()).listen({
-  port: PORT,
-  hostname: '0.0.0.0',
-});
+const app = new Elysia()
+  .use(setupRoutes())
+  .ws('/ws', setupWebSocket())
+  .listen({
+    port: PORT,
+    hostname: '0.0.0.0',
+  });
 
 logger.info({ host: app.server?.hostname, port: app.server?.port }, 'Server started');
 

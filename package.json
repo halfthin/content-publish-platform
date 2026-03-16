@@ -6,7 +6,7 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "concurrently \"cd apps/server && bun run dev\" \"cd apps/web && bun run dev\"",
+    "dev": "concurrently --kill-others-on-fail false \"cd apps/server && bun run dev\" \"cd apps/web && bun run dev\"",
     "dev:server": "cd apps/server && bun run dev",
     "dev:web": "cd apps/web && bun run dev",
     "build": "cd apps/web && bun run build",
