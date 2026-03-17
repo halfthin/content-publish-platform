@@ -1,4 +1,3 @@
-import type { WebSocketHandler } from 'bun';
 import { logger } from '../config/logger.js';
 
 interface WSMessage {
@@ -8,11 +7,10 @@ interface WSMessage {
 
 export function setupWebSocket() {
   return {
-    open(ws) {
-      ws.data.subscribe('heartbeat');
+    open(ws: any) {
       logger.info('WebSocket client connected');
     },
-    message(ws, message: string) {
+    message(ws: any, message: string) {
       try {
         const msg: WSMessage = JSON.parse(message);
         logger.debug('Received message', { message: msg });
@@ -27,8 +25,8 @@ export function setupWebSocket() {
         });
       }
     },
-    close(_ws) {
+    close(ws: any) {
       logger.info('WebSocket client disconnected');
     },
-  } satisfies WebSocketHandler;
+  };
 }

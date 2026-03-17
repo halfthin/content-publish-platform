@@ -1,22 +1,21 @@
-import path from 'node:path';
-import { getFileSink } from '@logtape/file';
 import { configure, getLogger, jsonLinesFormatter } from '@logtape/logtape';
 
-// 获取日志文件绝对路径
-const logPath = path.join(process.cwd(), 'logs', 'app.log');
+// 控制台日志 sink
+const consoleSink = (record: any) => {
+  const formatted = jsonLinesFormatter(record);
+  console.log(formatted);
+};
 
 // 配置日志
 await configure({
   sinks: {
-    file: getFileSink(logPath, {
-      formatter: jsonLinesFormatter,
-    }),
+    console: consoleSink,
   },
   loggers: [
     {
       category: ['app'],
       level: 'debug',
-      sinks: ['file'],
+      sinks: ['console'],
     },
   ],
 });
