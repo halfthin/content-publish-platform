@@ -74,8 +74,8 @@ export function setupAccountsRoutes() {
                 name,
                 platform,
                 username,
-                remark,
-                status: 'active',
+                notes: remark, // 字段映射：remark -> notes
+                status: 'ACTIVE', // enum 用大写
                 loginStatus: 'UNKNOWN',
                 group: groupConnect,
               },
@@ -119,13 +119,14 @@ export function setupAccountsRoutes() {
           const { name, platform, groupId, username, remark, status } = body;
 
           try {
-            const updateData: any = {
-              name,
-              platform,
-              username,
-              remark,
-              status,
-            };
+            const updateData: any = {};
+
+            // 只更新有值的字段
+            if (name !== undefined) updateData.name = name;
+            if (platform !== undefined) updateData.platform = platform;
+            if (username !== undefined) updateData.username = username;
+            if (remark !== undefined) updateData.notes = remark; // 字段映射：remark -> notes
+            if (status !== undefined) updateData.status = status;
 
             // 只有当 groupId 有值时才添加 group 关系
             if (groupId) {
@@ -224,7 +225,7 @@ export function setupAccountsRoutes() {
               };
             }
 
-            const newStatus = account.status === 'active' ? 'inactive' : 'active';
+            const newStatus = account.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
 
             await prisma.account.update({
               where: { id },
@@ -343,7 +344,7 @@ export function setupAccountsRoutes() {
             await prisma.account.update({
               where: { id },
               data: {
-                cookies: encryptedCookies as any,
+                encryptedCookies,
                 cookieUpdatedAt: new Date(),
                 loginStatus: 'LOGGED_IN',
               },
@@ -405,7 +406,7 @@ export function setupAccountsRoutes() {
               };
             }
 
-            if (!account.cookies) {
+            if (!account.encryptedCookies) {
               return {
                 success: false,
                 error: 'No cookies found for this account',
@@ -415,7 +416,7 @@ export function setupAccountsRoutes() {
             // 解密 Cookie
             const encryptionPassword =
               password || process.env.COOKIE_ENCRYPTION_KEY || 'default-key';
-            const cookies = await decryptCookies(account.cookies as string, encryptionPassword);
+            const cookies = await decryptCookies(account.encryptedCookies as string, encryptionPassword);
 
             // 启动临时浏览器验证 Cookie
             const browser = await chromium.launch({
@@ -506,7 +507,7 @@ export function setupAccountsRoutes() {
             await prisma.account.update({
               where: { id },
               data: {
-                cookies: null,
+                encryptedCookies: null,
                 cookieUpdatedAt: null,
                 loginStatus: 'UNKNOWN',
               },
@@ -574,7 +575,7 @@ export function setupAccountsRoutes() {
               await prisma.account.update({
                 where: { id: accountId },
                 data: {
-                  cookies: encryptedCookies as any,
+                  encryptedCookies,
                   cookieUpdatedAt: new Date(),
                   loginStatus: 'LOGGED_IN',
                 },
