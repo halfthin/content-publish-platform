@@ -50,22 +50,35 @@ export function setupAccountsRoutes() {
           const { name, platform, groupId, username, remark } = body;
 
           try {
-            const createData: any = {
-              name,
-              platform,
-              username,
-              remark,
-              status: 'active',
-              loginStatus: 'UNKNOWN',
-            };
-
-            // 只有当 groupId 有值时才添加，避免 Prisma 关系校验错误
-            if (groupId) {
-              createData.groupId = groupId;
-            }
+            // 如果没有提供 groupId，创建或连接到默认分组
+            const groupConnect = groupId
+              ? { connect: { id: groupId } }
+              : {
+                  connectOrCreate: {
+                    where: {
+                      platform_name: {
+                        platform,
+                        name: '默认分组',
+                      },
+                    },
+                    create: {
+                      platform,
+                      name: '默认分组',
+                      description: '自动创建的默认分组',
+                    },
+                  },
+                };
 
             const account = await prisma.account.create({
-              data: createData,
+              data: {
+                name,
+                platform,
+                username,
+                remark,
+                status: 'active',
+                loginStatus: 'UNKNOWN',
+                group: groupConnect,
+              },
               include: {
                 group: true,
               },
@@ -114,9 +127,11 @@ export function setupAccountsRoutes() {
               status,
             };
 
-            // 只有当 groupId 有值时才添加，避免 Prisma 关系校验错误
+            // 只有当 groupId 有值时才添加 group 关系
             if (groupId) {
-              updateData.groupId = groupId;
+              updateData.group = {
+                connect: { id: groupId },
+              };
             }
 
             const account = await prisma.account.update({
