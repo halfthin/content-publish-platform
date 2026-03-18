@@ -421,14 +421,35 @@ export function setupAccountsRoutes() {
             // 启动临时浏览器验证 Cookie
             const browser = await chromium.launch({
               headless: true,
-              args: ['--no-sandbox', '--disable-setuid-sandbox'],
+              args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--disable-gpu',
+                '--window-size=1920,1080',
+              ],
             });
 
             try {
+              // 使用更像真人的浏览器配置
               const context = await browser.newContext({
                 cookies,
+                userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 viewport: { width: 1920, height: 1080 },
+                locale: 'zh-CN',
+                timezoneId: 'Asia/Shanghai',
+                extraHTTPHeaders: {
+                  'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                },
               });
+
+              // 验证 cookie 是否成功注入
+              const injectedCookies = await context.cookies();
+              logger.debug({ 
+                count: injectedCookies.length, 
+                domains: injectedCookies.map(c => c.domain) 
+              }, 'Cookies injected');
 
               const page = await context.newPage();
 
