@@ -453,6 +453,12 @@ export function setupAccountsRoutes() {
 
               const page = await context.newPage();
 
+              // P4: 反自动化补丁 - 隐藏 webdriver 特征
+              await page.addInitScript(() => {
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+              });
+
               // 根据平台选择验证 URL
               const platformUrls: Record<string, string> = {
                 xiaohongshu: 'https://www.xiaohongshu.com/explore',
@@ -467,26 +473,58 @@ export function setupAccountsRoutes() {
                 timeout: 30000,
               });
 
-              // 收集验证详情
-              const verifyDetails = await page.evaluate(() => {
-                const details = {
-                  hasAvatar: false,
-                  hasLoginButton: false,
-                  pageTitle: document.title,
-                  url: window.location.href,
-                };
-                const avatar = document.querySelector(
-                  'img[data-e2e="user-avatar"], .user-avatar, .avatar-img, .avatar'
-                );
-                const loginButton = document.querySelector(
-                  'button[data-e2e="login-button"], .login-button, a[href*="login"]'
-                );
-                details.hasAvatar = !!avatar;
-                details.hasLoginButton = !!loginButton;
-                return details;
-              });
+              // P2: API优先 + 页面兜底校验
+              let isLoggedIn = false;
+              let verifyMethod = 'unknown';
+              let verifyDetails: any = {};
 
-              const isLoggedIn = verifyDetails.hasAvatar && !verifyDetails.hasLoginButton;
+              // 优先尝试 API 探测（小红书用户信息接口）
+              try {
+                const apiResult = await page.evaluate(async () => {
+                  try {
+                    const res = await fetch('https://edith.xiaohongshu.com/api/sns/web/v1/user/me', {
+                      credentials: 'include',
+                      headers: { 'Accept': 'application/json' }
+                    });
+                    return { status: res.status, ok: res.ok };
+                  } catch {
+                    return { status: 0, ok: false };
+                  }
+                });
+
+                if (apiResult.ok) {
+                  isLoggedIn = true;
+                  verifyMethod = 'api';
+                  verifyDetails = { apiStatus: apiResult.status, method: 'api' };
+                  logger.info('Cookie verified via API', { accountId: id, status: apiResult.status });
+                }
+              } catch (apiError) {
+                logger.debug('API verification failed, falling back to DOM', { accountId: id, error: String(apiError) });
+              }
+
+              // API 失败时 fallback 到页面 DOM 检测
+              if (!isLoggedIn) {
+                verifyDetails = await page.evaluate(() => {
+                  const details = {
+                    hasAvatar: false,
+                    hasLoginButton: false,
+                    pageTitle: document.title,
+                    url: window.location.href,
+                  };
+                  const avatar = document.querySelector(
+                    'img[data-e2e="user-avatar"], .user-avatar, .avatar-img, .avatar'
+                  );
+                  const loginButton = document.querySelector(
+                    'button[data-e2e="login-button"], .login-button, a[href*="login"]'
+                  );
+                  details.hasAvatar = !!avatar;
+                  details.hasLoginButton = !!loginButton;
+                  return details;
+                });
+
+                isLoggedIn = verifyDetails.hasAvatar && !verifyDetails.hasLoginButton;
+                verifyMethod = isLoggedIn ? 'dom' : 'failed';
+              }
 
               await context.close();
 
@@ -501,6 +539,7 @@ export function setupAccountsRoutes() {
               logger.info('Cookie verification completed', {
                 accountId: id,
                 isLoggedIn,
+                method: verifyMethod,
                 details: verifyDetails,
               });
 
@@ -510,12 +549,14 @@ export function setupAccountsRoutes() {
                   isLoggedIn,
                   verifiedAt: new Date(),
                   platform: account.platform,
+                  verifyMethod,
                   verifyDetails: {
-                    url: verifyDetails.url,
+                    url: verifyDetails.url || verifyUrl,
                     pageTitle: verifyDetails.pageTitle,
                     hasAvatar: verifyDetails.hasAvatar,
                     hasLoginButton: verifyDetails.hasLoginButton,
                     httpStatus: response?.status(),
+                    apiStatus: verifyDetails.apiStatus,
                   },
                 },
               };

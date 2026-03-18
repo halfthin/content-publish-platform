@@ -64,29 +64,25 @@ export class BrowserPool {
       const browserlessUrl = process.env.BROWSERLESS_URL;
 
       if (browserlessUrl) {
-        // 检查是否为 CDP 模式 (URL 不包含 /playwright)
+        // Browserless fallback / legacy path
         const isCDPMode = !browserlessUrl.includes('/playwright');
 
         if (isCDPMode) {
-          // Browserless v1.61+ 使用 CDP 协议
           const httpEndpoint = browserlessUrl.replace('ws://', 'http://');
           this.browser = await chromium.connectOverCDP(httpEndpoint);
-
-          logger.info('Connected to Browserless service (CDP mode)', {
+          logger.info('Connected to Browserless service (fallback/legacy CDP mode)', {
             httpEndpoint,
           });
         } else {
-          // Playwright 协议模式
           this.browser = await chromium.connect({
             wsEndpoint: browserlessUrl,
           });
-
-          logger.info('Connected to Browserless service (Playwright mode)', {
+          logger.info('Connected to Browserless service (fallback/legacy Playwright mode)', {
             wsEndpoint: browserlessUrl,
           });
         }
       } else {
-        // 使用本地浏览器（开发模式）
+        // 本地 Playwright 主路径（支持 WSL / 无 UI 服务器）
         this.browser = await chromium.launch({
           headless: this.config.headless,
           slowMo: this.config.slowMo,
@@ -100,7 +96,7 @@ export class BrowserPool {
           ],
         });
 
-        logger.info('Chromium browser launched (local)', {
+        logger.info('Chromium browser launched (local primary path)', {
           headless: this.config.headless,
           slowMo: this.config.slowMo,
         });
@@ -138,6 +134,18 @@ export class BrowserPool {
         locale: 'zh-CN',
         timezoneId: 'Asia/Shanghai',
         ...options,
+      });
+
+      // P4: 反自动化补丁 - 全局隐藏 webdriver 特征
+      await context.addInitScript(() => {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        // 模拟真实插件列表
+        Object.defineProperty(navigator, 'plugins', { 
+          get: () => [
+            { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer' },
+            { name: 'Native Client', filename: 'internal-nacl-plugin' }
+          ] 
+        });
       });
 
       // 设置默认超时
