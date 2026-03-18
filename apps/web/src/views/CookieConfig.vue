@@ -24,6 +24,31 @@
           </el-select>
         </el-form-item>
 
+        <!-- Cookie 配置状态提示 -->
+        <el-alert
+          v-if="currentAccount?.cookieUpdatedAt"
+          :title="`✅ Cookie 已配置（${formatDate(currentAccount.cookieUpdatedAt)}）`"
+          type="success"
+          :closable="false"
+          class="cookie-status-alert"
+        >
+          <template #default>
+            <p>出于安全原因，Cookie 内容已加密存储，不回显明文。</p>
+            <p>如需更新，请直接粘贴新的 Cookie JSON 并保存。</p>
+          </template>
+        </el-alert>
+        <el-alert
+          v-else
+          title="⚠️ Cookie 未配置"
+          type="warning"
+          :closable="false"
+          class="cookie-status-alert"
+        >
+          <template #default>
+            <p>请从浏览器开发者工具复制 Cookie JSON 并粘贴到下方。</p>
+          </template>
+        </el-alert>
+
         <el-form-item label="Cookie JSON" prop="cookieJson">
           <el-input
             v-model="form.cookieJson"
@@ -103,9 +128,25 @@
     >
       <template #default>
         <div v-if="testResult">
-          <p>验证时间：{{ formatDate(testResult.verifiedAt) }}</p>
-          <p>平台：{{ getPlatformName(testResult.platform) }}</p>
-          <p>登录状态：{{ testResult.isLoggedIn ? '已登录' : '未登录' }}</p>
+          <p><strong>验证时间：</strong>{{ formatDate(testResult.verifiedAt) }}</p>
+          <p><strong>平台：</strong>{{ getPlatformName(testResult.platform) }}</p>
+          <p><strong>登录状态：</strong>{{ testResult.isLoggedIn ? '已登录' : '未登录或已过期' }}</p>
+          <div v-if="testResult.verifyDetails" class="verify-details">
+            <p><strong>验证详情：</strong></p>
+            <ul>
+              <li>验证 URL：{{ testResult.verifyDetails.url }}</li>
+              <li>页面标题：{{ testResult.verifyDetails.pageTitle }}</li>
+              <li>HTTP 状态：{{ testResult.verifyDetails.httpStatus || '-' }}</li>
+              <li>检测到头像元素：{{ testResult.verifyDetails.hasAvatar ? '是' : '否' }}</li>
+              <li>检测到登录按钮：{{ testResult.verifyDetails.hasLoginButton ? '是' : '否' }}</li>
+            </ul>
+            <p class="verify-hint" v-if="!testResult.isLoggedIn">
+              <strong>可能原因：</strong>
+              <span v-if="!testResult.verifyDetails.hasAvatar">页面未检测到用户头像，Cookie 可能已过期或无效。</span>
+              <span v-if="testResult.verifyDetails.hasLoginButton">页面显示登录按钮，说明未处于登录状态。</span>
+              <span v-if="testResult.verifyDetails.httpStatus && testResult.verifyDetails.httpStatus >= 400">页面访问异常（HTTP {{ testResult.verifyDetails.httpStatus }}），请检查网络。</span>
+            </p>
+          </div>
         </div>
       </template>
     </el-alert>
@@ -140,6 +181,13 @@ const testResult = ref<{
   isLoggedIn: boolean;
   verifiedAt: string;
   platform: string;
+  verifyDetails?: {
+    url: string;
+    pageTitle: string;
+    httpStatus?: number;
+    hasAvatar: boolean;
+    hasLoginButton: boolean;
+  };
 } | null>(null);
 
 const accountIdFromQuery = computed(() => route.query.accountId as string);

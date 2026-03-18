@@ -432,22 +432,40 @@ export function setupAccountsRoutes() {
 
               const page = await context.newPage();
 
-              // 访问小红书并检查登录状态
-              await page.goto('https://www.xiaohongshu.com/explore', {
+              // 根据平台选择验证 URL
+              const platformUrls: Record<string, string> = {
+                xiaohongshu: 'https://www.xiaohongshu.com/explore',
+                weibo: 'https://weibo.com',
+                douyin: 'https://www.douyin.com',
+              };
+              const verifyUrl = platformUrls[account.platform] || platformUrls.xiaohongshu;
+
+              // 访问平台并检查登录状态
+              const response = await page.goto(verifyUrl, {
                 waitUntil: 'networkidle',
                 timeout: 30000,
               });
 
-              // 检查是否已登录（检查用户头像）
-              const isLoggedIn = await page.evaluate(() => {
+              // 收集验证详情
+              const verifyDetails = await page.evaluate(() => {
+                const details = {
+                  hasAvatar: false,
+                  hasLoginButton: false,
+                  pageTitle: document.title,
+                  url: window.location.href,
+                };
                 const avatar = document.querySelector(
-                  'img[data-e2e="user-avatar"], .user-avatar, .avatar-img'
+                  'img[data-e2e="user-avatar"], .user-avatar, .avatar-img, .avatar'
                 );
                 const loginButton = document.querySelector(
-                  'button[data-e2e="login-button"], .login-button'
+                  'button[data-e2e="login-button"], .login-button, a[href*="login"]'
                 );
-                return !!avatar && !loginButton;
+                details.hasAvatar = !!avatar;
+                details.hasLoginButton = !!loginButton;
+                return details;
               });
+
+              const isLoggedIn = verifyDetails.hasAvatar && !verifyDetails.hasLoginButton;
 
               await context.close();
 
@@ -462,6 +480,7 @@ export function setupAccountsRoutes() {
               logger.info('Cookie verification completed', {
                 accountId: id,
                 isLoggedIn,
+                details: verifyDetails,
               });
 
               return {
@@ -470,6 +489,13 @@ export function setupAccountsRoutes() {
                   isLoggedIn,
                   verifiedAt: new Date(),
                   platform: account.platform,
+                  verifyDetails: {
+                    url: verifyDetails.url,
+                    pageTitle: verifyDetails.pageTitle,
+                    hasAvatar: verifyDetails.hasAvatar,
+                    hasLoginButton: verifyDetails.hasLoginButton,
+                    httpStatus: response?.status(),
+                  },
                 },
               };
             } finally {
