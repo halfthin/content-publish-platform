@@ -50,16 +50,22 @@ export function setupAccountsRoutes() {
           const { name, platform, groupId, username, remark } = body;
 
           try {
+            const createData: any = {
+              name,
+              platform,
+              username,
+              remark,
+              status: 'active',
+              loginStatus: 'UNKNOWN',
+            };
+
+            // 只有当 groupId 有值时才添加，避免 Prisma 关系校验错误
+            if (groupId) {
+              createData.groupId = groupId;
+            }
+
             const account = await prisma.account.create({
-              data: {
-                name,
-                platform,
-                groupId,
-                username,
-                remark,
-                status: 'active',
-                loginStatus: 'UNKNOWN',
-              },
+              data: createData,
               include: {
                 group: true,
               },
@@ -100,16 +106,22 @@ export function setupAccountsRoutes() {
           const { name, platform, groupId, username, remark, status } = body;
 
           try {
+            const updateData: any = {
+              name,
+              platform,
+              username,
+              remark,
+              status,
+            };
+
+            // 只有当 groupId 有值时才添加，避免 Prisma 关系校验错误
+            if (groupId) {
+              updateData.groupId = groupId;
+            }
+
             const account = await prisma.account.update({
               where: { id },
-              data: {
-                name,
-                platform,
-                groupId,
-                username,
-                remark,
-                status,
-              },
+              data: updateData,
               include: {
                 group: true,
               },
