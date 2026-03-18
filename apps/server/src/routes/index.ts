@@ -30,6 +30,10 @@ export function setupRoutes() {
       // 发布状态跟踪 API
       .use(setupPublishStatusRoutes())
       .onRequest(({ path, method }) => {
+        // 过滤高频噪音路径
+        if (path === '/ws' || path.startsWith('/ws/')) {
+          return;
+        }
         logger.debug({ path, method }, 'Request received');
       })
   );

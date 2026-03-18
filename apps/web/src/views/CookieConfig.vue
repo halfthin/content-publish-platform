@@ -248,8 +248,7 @@ async function testCookie() {
 
   testing.value = true;
   try {
-    const result = await verifyCookieApi(form.accountId, form.password || undefined);
-    const testData = (result as any).data || result;
+    const testData = await verifyCookieApi(form.accountId, form.password || undefined);
     testResult.value = testData;
 
     if (testData.isLoggedIn) {
