@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia';
 import { chromium } from 'playwright';
-import { createLogger } from '../config/logger';
+import { createLogger, verifyLogger } from '../config/logger';
 import { browserPool } from '../config/playwright';
 import { prisma } from '../config/prisma';
 import { decryptCookies, encryptCookies } from '../utils/encryption';
@@ -434,7 +434,6 @@ export function setupAccountsRoutes() {
             try {
               // 使用更像真人的浏览器配置
               const context = await browser.newContext({
-                cookies,
                 userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 viewport: { width: 1920, height: 1080 },
                 locale: 'zh-CN',
@@ -443,6 +442,9 @@ export function setupAccountsRoutes() {
                   'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
                 },
               });
+
+              // 正确方式：context 建立后再 addCookies
+              await context.addCookies(cookies);
 
               // 验证 cookie 是否成功注入
               const injectedCookies = await context.cookies();
