@@ -8,6 +8,18 @@ import { decryptCookies, encryptCookies } from '../utils/encryption';
 const logger = createLogger('accounts-route');
 
 /**
+ * 标准化 sameSite 值，确保符合 Playwright 枚举
+ */
+function normalizeSameSite(sameSite: string | undefined): 'Strict' | 'Lax' | 'None' | undefined {
+  if (!sameSite || sameSite === 'unspecified') return undefined;
+  const normalized = sameSite.toLowerCase();
+  if (normalized === 'strict') return 'Strict';
+  if (normalized === 'lax') return 'Lax';
+  if (normalized === 'none') return 'None';
+  return undefined; // 未知值默认不设置
+}
+
+/**
  * 账号管理 API 路由
  */
 export function setupAccountsRoutes() {
@@ -444,7 +456,18 @@ export function setupAccountsRoutes() {
               });
 
               // 正确方式：context 建立后再 addCookies
-              await context.addCookies(cookies);
+              // 标准化 cookie 格式，确保 sameSite 符合 Playwright 枚举
+              const normalizedCookies = cookies.map((c: any) => ({
+                name: c.name,
+                value: c.value,
+                domain: c.domain,
+                path: c.path || '/',
+                expires: c.expires || c.expirationDate || -1,
+                httpOnly: c.httpOnly || false,
+                secure: c.secure || false,
+                sameSite: normalizeSameSite(c.sameSite),
+              }));
+              await context.addCookies(normalizedCookies);
 
               // 验证 cookie 是否成功注入
               const injectedCookies = await context.cookies();
@@ -566,10 +589,18 @@ export function setupAccountsRoutes() {
               await browser.close();
             }
           } catch (error) {
+            const errorMsg = String(error);
             logger.error('Failed to verify cookies', {
               accountId: id,
-              error: String(error),
+              error: errorMsg,
             });
+            // 记录到独立 verify 日志
+            verifyLogger.error({
+              accountId: id,
+              stage: 'verify_exception',
+              error: errorMsg,
+              stack: error instanceof Error ? error.stack : undefined,
+            }, 'Cookie verify failed with exception');
 
             return {
               success: false,
