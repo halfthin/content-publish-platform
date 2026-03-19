@@ -1,17 +1,24 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
-import type { Content, ContentListParams } from '@/api/contents';
+import { computed, ref } from 'vue';
+import type {
+  Content,
+  ContentDetailResponse,
+  ContentListParams,
+  ContentListResponse,
+  ContentPagination,
+  ContentWithPreview,
+} from '@/api/contents';
 import * as contentApi from '@/api/contents';
 
 export const useContentStore = defineStore('content', () => {
   // State
   const contents = ref<Content[]>([]);
-  const currentContent = ref<Content | null>(null);
+  const currentContent = ref<ContentWithPreview | null>(null);
   const loading = ref(false);
   const error = ref<string | null>(null);
-  
+
   // 分页信息
-  const pagination = ref({
+  const pagination = ref<ContentPagination>({
     total: 0,
     page: 1,
     limit: 20,
@@ -25,17 +32,11 @@ export const useContentStore = defineStore('content', () => {
   });
 
   // Getters
-  const pendingContents = computed(() => 
-    contents.value.filter(c => c.status === 'PENDING')
-  );
+  const pendingContents = computed(() => contents.value.filter((c) => c.status === 'PENDING'));
 
-  const approvedContents = computed(() => 
-    contents.value.filter(c => c.status === 'APPROVED')
-  );
+  const approvedContents = computed(() => contents.value.filter((c) => c.status === 'APPROVED'));
 
-  const hasMore = computed(() => 
-    pagination.value.page < pagination.value.totalPages
-  );
+  const hasMore = computed(() => pagination.value.page < pagination.value.totalPages);
 
   // Actions
   async function fetchContents(params: ContentListParams = {}) {
@@ -44,12 +45,12 @@ export const useContentStore = defineStore('content', () => {
 
     try {
       const mergeParams = { ...filterParams.value, ...params };
-      const result = await contentApi.getContents(mergeParams);
-      
-      contents.value = (result as any).data || result || [];
-      pagination.value = (result as any).pagination || pagination.value;
+      const result: ContentListResponse = await contentApi.getContents(mergeParams);
+
+      contents.value = result.data;
+      pagination.value = result.pagination;
       filterParams.value = mergeParams;
-      
+
       return result;
     } catch (err: unknown) {
       error.value = err instanceof Error ? err.message : '加载失败';
@@ -64,8 +65,8 @@ export const useContentStore = defineStore('content', () => {
     error.value = null;
 
     try {
-      const result = await contentApi.getContentById(id);
-      currentContent.value = (result as any).data || result;
+      const result: ContentDetailResponse = await contentApi.getContentById(id);
+      currentContent.value = result.data;
       return result;
     } catch (err: unknown) {
       error.value = err instanceof Error ? err.message : '加载失败';
@@ -78,9 +79,9 @@ export const useContentStore = defineStore('content', () => {
   async function approveContentAction(id: string, reviewedBy: string, note?: string) {
     try {
       const result = await contentApi.approveContent(id, reviewedBy, note);
-      
+
       // 更新本地状态
-      const index = contents.value.findIndex(c => c.id === id);
+      const index = contents.value.findIndex((c) => c.id === id);
       if (index !== -1) {
         contents.value[index] = {
           ...contents.value[index],
@@ -90,11 +91,11 @@ export const useContentStore = defineStore('content', () => {
           reviewNote: note,
         };
       }
-      
+
       if (currentContent.value?.id === id) {
         currentContent.value.status = 'APPROVED';
       }
-      
+
       return result;
     } catch (err: unknown) {
       error.value = err instanceof Error ? err.message : '审核失败';
@@ -105,9 +106,9 @@ export const useContentStore = defineStore('content', () => {
   async function rejectContentAction(id: string, reviewedBy: string, note?: string) {
     try {
       const result = await contentApi.rejectContent(id, reviewedBy, note);
-      
+
       // 更新本地状态
-      const index = contents.value.findIndex(c => c.id === id);
+      const index = contents.value.findIndex((c) => c.id === id);
       if (index !== -1) {
         contents.value[index] = {
           ...contents.value[index],
@@ -117,11 +118,11 @@ export const useContentStore = defineStore('content', () => {
           reviewNote: note,
         };
       }
-      
+
       if (currentContent.value?.id === id) {
         currentContent.value.status = 'REJECTED';
       }
-      
+
       return result;
     } catch (err: unknown) {
       error.value = err instanceof Error ? err.message : '审核失败';
@@ -167,12 +168,12 @@ export const useContentStore = defineStore('content', () => {
     error,
     pagination,
     filterParams,
-    
+
     // Getters
     pendingContents,
     approvedContents,
     hasMore,
-    
+
     // Actions
     fetchContents,
     fetchContentDetail,

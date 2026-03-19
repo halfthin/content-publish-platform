@@ -377,7 +377,7 @@ export class XiaohongshuScraper {
           try {
             await this.page.goBack();
             await this.page.waitForLoadState('networkidle');
-          } catch (e) {
+          } catch (_e) {
             // 忽略错误
           }
         }

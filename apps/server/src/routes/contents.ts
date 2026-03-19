@@ -16,6 +16,12 @@ import {
 
 const logger = createLogger('contents-route');
 
+function isSupportedPublishPlatform(
+  platform: string
+): platform is 'xiaohongshu' | 'weibo' | 'douyin' | 'bilibili' | 'wechat' {
+  return ['xiaohongshu', 'weibo', 'douyin', 'bilibili', 'wechat'].includes(platform);
+}
+
 /**
  * 安全路径处理 - 防止路径遍历攻击
  */
@@ -121,7 +127,7 @@ export function setupContentsRoutes() {
           let safeFilepath: string;
           try {
             safeFilepath = sanitizePath(filepath);
-          } catch (error) {
+          } catch {
             set.status = 400;
             return {
               success: false,
@@ -324,10 +330,17 @@ export function setupContentsRoutes() {
               };
             }
 
-            if (account.status !== 'active') {
+            if (account.status !== 'ACTIVE') {
               return {
                 success: false,
                 error: 'Account is not active',
+              };
+            }
+
+            if (!isSupportedPublishPlatform(platform)) {
+              return {
+                success: false,
+                error: 'Unsupported platform',
               };
             }
 
@@ -353,7 +366,7 @@ export function setupContentsRoutes() {
               {
                 contentId: id,
                 accountId: targetAccountId,
-                platform: platform as any,
+                platform,
                 content: {
                   title: content.title,
                   description: content.description || '',

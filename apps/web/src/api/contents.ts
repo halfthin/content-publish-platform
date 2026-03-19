@@ -25,6 +25,13 @@ export interface ContentWithPreview extends Content {
   mdContent?: string;
 }
 
+export interface ContentPagination {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 export interface ContentListParams {
   page?: number;
   limit?: number;
@@ -35,18 +42,11 @@ export interface ContentListParams {
 }
 
 export interface ContentListResponse {
-  success: boolean;
   data: Content[];
-  pagination: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
+  pagination: ContentPagination;
 }
 
 export interface ContentDetailResponse {
-  success: boolean;
   data: ContentWithPreview;
 }
 

@@ -5,12 +5,16 @@ interface WSMessage {
   data?: unknown;
 }
 
+interface WebSocketClient {
+  send(message: string): void;
+}
+
 export function setupWebSocket() {
   return {
-    open(ws: any) {
+    open(_ws: WebSocketClient) {
       logger.info('WebSocket client connected');
     },
-    message(ws: any, message: string) {
+    message(ws: WebSocketClient, message: string) {
       try {
         const msg: WSMessage = JSON.parse(message);
         logger.debug('Received message', { message: msg });
@@ -25,7 +29,7 @@ export function setupWebSocket() {
         });
       }
     },
-    close(ws: any) {
+    close(_ws: WebSocketClient) {
       logger.info('WebSocket client disconnected');
     },
   };

@@ -109,7 +109,10 @@ export async function retryPublish(publishLogId: string): Promise<{ jobId: strin
 export async function getAllPublishLogs(
   limit: number = 20,
   offset: number = 0
-): Promise<{ publishLogs: PublishLog[]; pagination: { total: number; limit: number; offset: number } }> {
+): Promise<{
+  publishLogs: PublishLog[];
+  pagination: { total: number; limit: number; offset: number };
+}> {
   // 注意：后端需要实现 /api/publish-status/account/all 端点
   // 临时使用空 accountId 或修改为获取所有
   const response = await axios.get(`${API_BASE}/publish-status/account/all`, {

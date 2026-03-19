@@ -63,6 +63,24 @@ bun run db:migrate
 bun run dev
 ```
 
+### 4. 测试与质量检查
+
+```bash
+# 后端默认测试（不依赖本地 Postgres / Redis）
+cd apps/server && bun test
+
+# 仅在本地基础设施已就绪时运行集成测试
+cd apps/server && RUN_INTEGRATION_TESTS=true bun test
+
+# 定向执行 Biome 检查
+cd apps/server && ./node_modules/.bin/biome check src test
+cd apps/web && ./node_modules/.bin/biome check src
+```
+
+说明：
+- 根目录和 `apps/server` 根目录下早期的 `test-*`、`debug-*`、`validate-*` 一次性脚本已清理。
+- 当前维护入口以 `bun test`、`RUN_INTEGRATION_TESTS=true bun test` 和应用内页面/API 为准。
+
 ---
 
 ## 🍪 Cookie 管理指南
@@ -600,10 +618,10 @@ export const platformConfig = {
 
 ```bash
 # 运行微博发布器测试
-bun test src/publishers/weibo.test.ts
+bun test apps/server/src/publishers/weibo.ts
 
-# 端到端测试
-bun run src/test-weibo.ts
+# 运行服务端测试
+cd apps/server && bun test
 ```
 
 **预计工作量**:

@@ -51,6 +51,24 @@ export interface SearchPageSelectors {
   loadMore: string[]; // 加载更多
 }
 
+type SelectorElement = {
+  click(): Promise<void>;
+  fill(value: string): Promise<void>;
+  clear(): Promise<void>;
+  textContent(): Promise<string | null>;
+};
+
+type SelectorPage = {
+  waitForSelector(
+    selector: string,
+    options: { state: 'visible' | 'detached'; timeout: number; strict?: boolean }
+  ): Promise<SelectorElement | null>;
+};
+
+type SelectorCard = {
+  $(selector: string): Promise<SelectorElement | null>;
+};
+
 /**
  * 小红书搜索页面 Selector 配置
  *
@@ -208,10 +226,10 @@ export const searchPageSelectors: SearchPageSelectors = {
  * 查找第一个匹配的元素
  */
 export async function findElement(
-  page: any,
+  page: SelectorPage,
   selectors: string[],
   options?: { timeout?: number; strict?: boolean }
-): Promise<any> {
+): Promise<SelectorElement | null> {
   const timeout = options?.timeout ?? 10000;
 
   for (const selector of selectors) {
@@ -225,7 +243,7 @@ export async function findElement(
       if (element) {
         return element;
       }
-    } catch (error) {}
+    } catch {}
   }
 
   return null;
@@ -234,12 +252,15 @@ export async function findElement(
 /**
  * 在卡片内查找元素
  */
-export async function findElementInCard(card: any, selectors: string[]): Promise<any> {
+export async function findElementInCard(
+  card: SelectorCard,
+  selectors: string[]
+): Promise<SelectorElement | null> {
   for (const selector of selectors) {
     try {
       const el = await card.$(selector);
       if (el) return el;
-    } catch (error) {}
+    } catch {}
   }
   return null;
 }
@@ -248,7 +269,7 @@ export async function findElementInCard(card: any, selectors: string[]): Promise
  * 查找并点击元素
  */
 export async function clickElement(
-  page: any,
+  page: SelectorPage,
   selectors: string[],
   options?: { timeout?: number }
 ): Promise<boolean> {
@@ -266,7 +287,7 @@ export async function clickElement(
  * 查找并填充输入框
  */
 export async function fillInput(
-  page: any,
+  page: SelectorPage,
   selectors: string[],
   value: string,
   options?: { timeout?: number; clear?: boolean }
@@ -288,7 +309,7 @@ export async function fillInput(
  * 提取元素文本
  */
 export async function getElementText(
-  page: any,
+  page: SelectorPage,
   selectors: string[],
   options?: { timeout?: number }
 ): Promise<string> {

@@ -1,22 +1,83 @@
+import type { Prisma } from '@prisma/client';
 import { Elysia, t } from 'elysia';
 import { chromium } from 'playwright';
 import { createLogger, verifyLogger } from '../config/logger';
-import { browserPool } from '../config/playwright';
 import { prisma } from '../config/prisma';
+import {
+  normalizeCookiesForBrowser,
+  normalizeCookiesForStorage,
+  type SupportedPlatform,
+} from '../utils/cookie-normalizer';
 import { decryptCookies, encryptCookies } from '../utils/encryption';
 
 const logger = createLogger('accounts-route');
 
-/**
- * 标准化 sameSite 值，确保符合 Playwright 枚举
- */
-function normalizeSameSite(sameSite: string | undefined): 'Strict' | 'Lax' | 'None' | undefined {
-  if (!sameSite || sameSite === 'unspecified') return undefined;
-  const normalized = sameSite.toLowerCase();
-  if (normalized === 'strict') return 'Strict';
-  if (normalized === 'lax') return 'Lax';
-  if (normalized === 'none') return 'None';
-  return undefined; // 未知值默认不设置
+function normalizePlatform(platform: string): SupportedPlatform | undefined {
+  if (platform === 'xiaohongshu' || platform === 'weibo' || platform === 'douyin') {
+    return platform;
+  }
+  return undefined;
+}
+
+async function navigateForVerification(
+  page: Awaited<ReturnType<import('playwright').BrowserContext['newPage']>>,
+  url: string
+) {
+  try {
+    const response = await page.goto(url, {
+      waitUntil: 'domcontentloaded',
+      timeout: 15000,
+    });
+    await page.waitForTimeout(1500);
+    return response;
+  } catch (error) {
+    const message = String(error);
+    if (!message.toLowerCase().includes('timeout')) {
+      throw error;
+    }
+
+    // 小红书页面常驻轮询较多，超时时保留当前页面继续做 DOM / API 探测
+    await page.waitForTimeout(1500);
+    return null;
+  }
+}
+
+async function detectProfileLinks(
+  page: Awaited<ReturnType<import('playwright').BrowserContext['newPage']>>
+): Promise<{
+  htmlProfileLinks: string[];
+  domProfileLinks: string[];
+}> {
+  const normalizeProfileLink = (value: string): string | null => {
+    const match = value.match(/(https?:\/\/www\.xiaohongshu\.com)?\/user\/profile\/[a-zA-Z0-9]+/);
+    if (!match) {
+      return null;
+    }
+
+    return match[0].startsWith('http') ? match[0] : `https://www.xiaohongshu.com${match[0]}`;
+  };
+
+  const domProfileLinks = await page.$$eval('a[href*="/user/profile/"]', (anchors) =>
+    Array.from(
+      new Set(
+        anchors.map((anchor) => anchor.getAttribute('href') || anchor.href || '').filter(Boolean)
+      )
+    )
+  );
+
+  const html = await page.content();
+  const htmlMatches = html.match(
+    /(?:https?:\/\/www\.xiaohongshu\.com)?\/user\/profile\/[a-zA-Z0-9]+/g
+  );
+
+  return {
+    htmlProfileLinks: Array.from(
+      new Set((htmlMatches || []).map((link) => normalizeProfileLink(link)).filter(Boolean))
+    ) as string[],
+    domProfileLinks: Array.from(
+      new Set(domProfileLinks.map((link) => normalizeProfileLink(link)).filter(Boolean))
+    ) as string[],
+  };
 }
 
 /**
@@ -131,7 +192,7 @@ export function setupAccountsRoutes() {
           const { name, platform, groupId, username, remark, status } = body;
 
           try {
-            const updateData: any = {};
+            const updateData: Prisma.AccountUpdateInput = {};
 
             // 只更新有值的字段
             if (name !== undefined) updateData.name = name;
@@ -324,7 +385,7 @@ export function setupAccountsRoutes() {
             }
 
             // 解析 Cookie（支持 JSON 字符串或对象）
-            let cookieArray: any[];
+            let cookieArray: unknown[];
 
             if (typeof cookies === 'string') {
               try {
@@ -347,10 +408,21 @@ export function setupAccountsRoutes() {
               };
             }
 
+            const normalizedCookies = normalizeCookiesForStorage(
+              cookieArray,
+              normalizePlatform(account.platform)
+            );
+            if (normalizedCookies.length === 0) {
+              return {
+                success: false,
+                error: 'Cookie must include valid name/value and domain or url fields',
+              };
+            }
+
             // 加密 Cookie
             const encryptionPassword =
               password || process.env.COOKIE_ENCRYPTION_KEY || 'default-key';
-            const encryptedCookies = await encryptCookies(cookieArray, encryptionPassword);
+            const encryptedCookies = await encryptCookies(normalizedCookies, encryptionPassword);
 
             // 更新数据库
             await prisma.account.update({
@@ -371,7 +443,7 @@ export function setupAccountsRoutes() {
               success: true,
               message: 'Cookies imported successfully',
               data: {
-                count: cookieArray.length,
+                count: normalizedCookies.length,
                 updatedAt: new Date(),
               },
             };
@@ -428,7 +500,10 @@ export function setupAccountsRoutes() {
             // 解密 Cookie
             const encryptionPassword =
               password || process.env.COOKIE_ENCRYPTION_KEY || 'default-key';
-            const cookies = await decryptCookies(account.encryptedCookies as string, encryptionPassword);
+            const cookies = await decryptCookies(
+              account.encryptedCookies as string,
+              encryptionPassword
+            );
 
             // 启动临时浏览器验证 Cookie
             const browser = await chromium.launch({
@@ -446,7 +521,8 @@ export function setupAccountsRoutes() {
             try {
               // 使用更像真人的浏览器配置
               const context = await browser.newContext({
-                userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                userAgent:
+                  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 viewport: { width: 1920, height: 1080 },
                 locale: 'zh-CN',
                 timezoneId: 'Asia/Shanghai',
@@ -455,29 +531,34 @@ export function setupAccountsRoutes() {
                 },
               });
 
-              // 正确方式：context 建立后再 addCookies
-              // 标准化 cookie 格式，确保 sameSite 符合 Playwright 枚举
-              const normalizedCookies = cookies.map((c: any) => ({
-                name: c.name,
-                value: c.value,
-                domain: c.domain,
-                path: c.path || '/',
-                expires: c.expires || c.expirationDate || -1,
-                httpOnly: c.httpOnly || false,
-                secure: c.secure || false,
-                sameSite: normalizeSameSite(c.sameSite),
-              }));
+              const normalizedCookies = normalizeCookiesForBrowser(
+                cookies,
+                normalizePlatform(account.platform)
+              );
+              if (normalizedCookies.length === 0) {
+                return {
+                  success: false,
+                  error: 'No valid cookies remained after normalization',
+                };
+              }
               await context.addCookies(normalizedCookies);
 
               // P2: 验证 cookie 是否成功注入 - 升到 info 级别并记录到 verifyLogger
               const injectedCookies = await context.cookies();
+              const injectedCookieNames = new Set(injectedCookies.map((cookie) => cookie.name));
+              const hasXiaohongshuAuthCookies =
+                injectedCookieNames.has('a1') &&
+                (injectedCookieNames.has('web_session') ||
+                  injectedCookieNames.has('id_token') ||
+                  injectedCookieNames.has('webId'));
               const cookieLog = {
                 accountId: id,
                 stage: 'cookie_injection',
                 inputCount: normalizedCookies.length,
-                inputDomains: normalizedCookies.map((c: any) => c.domain),
+                inputDomains: normalizedCookies.map((c) => c.domain),
                 injectedCount: injectedCookies.length,
-                injectedDomains: injectedCookies.map(c => c.domain),
+                injectedDomains: injectedCookies.map((c) => c.domain),
+                injectedCookieNames: Array.from(injectedCookieNames),
                 success: injectedCookies.length > 0,
               };
               logger.info(cookieLog, 'Cookies injected');
@@ -491,33 +572,174 @@ export function setupAccountsRoutes() {
                 Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
               });
 
-              // 根据平台选择验证 URL
-              const platformUrls: Record<string, string> = {
-                xiaohongshu: 'https://www.xiaohongshu.com/explore',
-                weibo: 'https://weibo.com',
-                douyin: 'https://www.douyin.com',
+              const platformUrls: Record<string, string[]> = {
+                xiaohongshu: [
+                  'https://creator.xiaohongshu.com/publish/publish',
+                  'https://www.xiaohongshu.com/explore',
+                ],
+                weibo: ['https://weibo.com'],
+                douyin: ['https://www.douyin.com'],
               };
-              const verifyUrl = platformUrls[account.platform] || platformUrls.xiaohongshu;
+              const verifyTargets = platformUrls[account.platform] || platformUrls.xiaohongshu;
+
+              let response: Awaited<ReturnType<typeof page.goto>> | null = null;
+              let lastVisitedUrl = verifyTargets[0];
+              for (const verifyUrl of verifyTargets) {
+                lastVisitedUrl = verifyUrl;
+                response = await navigateForVerification(page, verifyUrl);
+
+                if (account.platform !== 'xiaohongshu') {
+                  break;
+                }
+
+                const currentUrl = page.url();
+                if (!/login|signin|passport/i.test(currentUrl)) {
+                  break;
+                }
+              }
 
               // 访问平台并检查登录状态
-              const response = await page.goto(verifyUrl, {
-                waitUntil: 'networkidle',
-                timeout: 30000,
-              });
+              const currentPageUrl = page.url();
+              const currentTitle = await page.title();
+              const isXiaohongshu = account.platform === 'xiaohongshu';
+              const isOnLoginPage = /login|signin|passport/i.test(currentPageUrl);
+              const isOnCreatorDomain = currentPageUrl.includes('creator.xiaohongshu.com');
+              const detectedProfileLinks = isXiaohongshu ? await detectProfileLinks(page) : null;
+
+              if (isXiaohongshu && !isOnLoginPage && isOnCreatorDomain) {
+                const creatorPublishEntry = await page
+                  .locator('input[type="file"], button:has-text("发布"), [class*="upload"]')
+                  .first()
+                  .isVisible()
+                  .catch(() => false);
+
+                if (creatorPublishEntry) {
+                  await context.close();
+
+                  await prisma.account.update({
+                    where: { id },
+                    data: {
+                      loginStatus: 'LOGGED_IN',
+                    },
+                  });
+
+                  logger.info('Cookie verification completed', {
+                    accountId: id,
+                    isLoggedIn: true,
+                    method: 'creator-publish-page',
+                    details: {
+                      url: currentPageUrl,
+                      pageTitle: currentTitle,
+                    },
+                  });
+
+                  return {
+                    success: true,
+                    data: {
+                      isLoggedIn: true,
+                      verifiedAt: new Date(),
+                      platform: account.platform,
+                      verifyMethod: 'creator-publish-page',
+                      verifyDetails: {
+                        url: currentPageUrl,
+                        pageTitle: currentTitle,
+                        hasAvatar: false,
+                        hasLoginButton: false,
+                        httpStatus: response?.status(),
+                        hasAuthCookies: hasXiaohongshuAuthCookies,
+                      },
+                    },
+                  };
+                }
+              }
+
+              if (
+                isXiaohongshu &&
+                !isOnLoginPage &&
+                hasXiaohongshuAuthCookies &&
+                detectedProfileLinks &&
+                (detectedProfileLinks.htmlProfileLinks.length > 0 ||
+                  detectedProfileLinks.domProfileLinks.length > 0)
+              ) {
+                await prisma.account.update({
+                  where: { id },
+                  data: {
+                    loginStatus: 'LOGGED_IN',
+                  },
+                });
+
+                logger.info('Cookie verification completed', {
+                  accountId: id,
+                  isLoggedIn: true,
+                  method: 'web-domain-with-auth-cookies',
+                  details: {
+                    url: currentPageUrl,
+                    pageTitle: currentTitle,
+                    injectedCookieNames: Array.from(injectedCookieNames),
+                    detectedProfileLinks,
+                  },
+                });
+                verifyLogger.info(
+                  {
+                    accountId: id,
+                    stage: 'verify_complete',
+                    isLoggedIn: true,
+                    method: 'web-domain-with-auth-cookies',
+                    url: currentPageUrl,
+                    pageTitle: currentTitle,
+                    injectedCookieNames: Array.from(injectedCookieNames),
+                    detectedProfileLinks,
+                  },
+                  'Cookie verification completed'
+                );
+
+                await context.close();
+
+                return {
+                  success: true,
+                  data: {
+                    isLoggedIn: true,
+                    verifiedAt: new Date(),
+                    platform: account.platform,
+                    verifyMethod: 'web-domain-with-auth-cookies',
+                    verifyDetails: {
+                      url: currentPageUrl,
+                      pageTitle: currentTitle,
+                      hasAvatar: false,
+                      hasLoginButton: true,
+                      httpStatus: response?.status(),
+                      hasAuthCookies: true,
+                      detectedProfileLinks,
+                    },
+                  },
+                };
+              }
+
+              // 继续使用 API + DOM 兜底
+              // 根据平台选择验证 URL
+              const verifyUrl = currentPageUrl || lastVisitedUrl;
+
+              // 访问平台并检查登录状态
+              if (!response) {
+                response = await navigateForVerification(page, verifyUrl);
+              }
 
               // P2: API优先 + 页面兜底校验
               let isLoggedIn = false;
               let verifyMethod = 'unknown';
-              let verifyDetails: any = {};
+              let verifyDetails: Record<string, unknown> = {};
 
               // 优先尝试 API 探测（小红书用户信息接口）
               try {
                 const apiResult = await page.evaluate(async () => {
                   try {
-                    const res = await fetch('https://edith.xiaohongshu.com/api/sns/web/v1/user/me', {
-                      credentials: 'include',
-                      headers: { 'Accept': 'application/json' }
-                    });
+                    const res = await fetch(
+                      'https://edith.xiaohongshu.com/api/sns/web/v1/user/me',
+                      {
+                        credentials: 'include',
+                        headers: { Accept: 'application/json' },
+                      }
+                    );
                     return { status: res.status, ok: res.ok };
                   } catch {
                     return { status: 0, ok: false };
@@ -528,7 +750,10 @@ export function setupAccountsRoutes() {
                   isLoggedIn = true;
                   verifyMethod = 'api-success';
                   verifyDetails = { apiStatus: apiResult.status, method: 'api' };
-                  logger.info('Cookie verified via API', { accountId: id, status: apiResult.status });
+                  logger.info('Cookie verified via API', {
+                    accountId: id,
+                    status: apiResult.status,
+                  });
                 } else if (apiResult.status === 401) {
                   verifyMethod = 'api-unauthorized';
                   verifyDetails = { apiStatus: apiResult.status, method: 'api' };
@@ -536,11 +761,17 @@ export function setupAccountsRoutes() {
                 } else {
                   verifyMethod = 'api-error';
                   verifyDetails = { apiStatus: apiResult.status, method: 'api' };
-                  logger.info('API error, will fallback to DOM', { accountId: id, status: apiResult.status });
+                  logger.info('API error, will fallback to DOM', {
+                    accountId: id,
+                    status: apiResult.status,
+                  });
                 }
               } catch (apiError) {
                 verifyMethod = 'api-exception';
-                logger.info('API verification exception, falling back to DOM', { accountId: id, error: String(apiError) });
+                logger.info('API verification exception, falling back to DOM', {
+                  accountId: id,
+                  error: String(apiError),
+                });
               }
 
               // API 失败时 fallback 到页面 DOM 检测
@@ -558,12 +789,32 @@ export function setupAccountsRoutes() {
                   const loginButton = document.querySelector(
                     'button[data-e2e="login-button"], .login-button, a[href*="login"]'
                   );
+                  const creatorPublishEntry = document.querySelector(
+                    'input[type="file"], [class*="upload-wrapper"], [class*="upload-area"], [class*="publish-content"], [class*="publish-container"]'
+                  );
                   details.hasAvatar = !!avatar;
                   details.hasLoginButton = !!loginButton;
-                  return details;
+                  return {
+                    ...details,
+                    hasCreatorPublishEntry: !!creatorPublishEntry,
+                    hasAuthCookies: document.cookie.includes('a1='),
+                  };
                 });
+                if (detectedProfileLinks) {
+                  verifyDetails.detectedProfileLinks = detectedProfileLinks;
+                }
 
-                isLoggedIn = verifyDetails.hasAvatar && !verifyDetails.hasLoginButton;
+                isLoggedIn =
+                  (verifyDetails.hasAvatar && !verifyDetails.hasLoginButton) ||
+                  ((verifyDetails.detectedProfileLinks?.htmlProfileLinks?.length > 0 ||
+                    verifyDetails.detectedProfileLinks?.domProfileLinks?.length > 0) &&
+                    verifyDetails.hasAuthCookies &&
+                    !/login|signin|passport/i.test(verifyDetails.url || '')) ||
+                  (verifyDetails.hasCreatorPublishEntry &&
+                    verifyDetails.url?.includes('creator.xiaohongshu.com') &&
+                    !verifyDetails.hasLoginButton &&
+                    verifyDetails.hasAuthCookies &&
+                    !/login|signin|passport/i.test(verifyDetails.url || ''));
                 // P3: 细化失败状态，可判责
                 if (isLoggedIn) {
                   verifyMethod = 'dom';
@@ -592,6 +843,17 @@ export function setupAccountsRoutes() {
                 method: verifyMethod,
                 details: verifyDetails,
               });
+              verifyLogger.info(
+                {
+                  accountId: id,
+                  stage: 'verify_complete',
+                  isLoggedIn,
+                  method: verifyMethod,
+                  details: verifyDetails,
+                  injectedCookieNames: Array.from(injectedCookieNames),
+                },
+                'Cookie verification completed'
+              );
 
               return {
                 success: true,
@@ -607,6 +869,8 @@ export function setupAccountsRoutes() {
                     hasLoginButton: verifyDetails.hasLoginButton,
                     httpStatus: response?.status(),
                     apiStatus: verifyDetails.apiStatus,
+                    hasCreatorPublishEntry: verifyDetails.hasCreatorPublishEntry,
+                    hasAuthCookies: verifyDetails.hasAuthCookies || hasXiaohongshuAuthCookies,
                   },
                 },
               };
@@ -620,12 +884,15 @@ export function setupAccountsRoutes() {
               error: errorMsg,
             });
             // 记录到独立 verify 日志
-            verifyLogger.error({
-              accountId: id,
-              stage: 'verify_exception',
-              error: errorMsg,
-              stack: error instanceof Error ? error.stack : undefined,
-            }, 'Cookie verify failed with exception');
+            verifyLogger.error(
+              {
+                accountId: id,
+                stage: 'verify_exception',
+                error: errorMsg,
+                stack: error instanceof Error ? error.stack : undefined,
+              },
+              'Cookie verify failed with exception'
+            );
 
             return {
               success: false,
@@ -705,8 +972,17 @@ export function setupAccountsRoutes() {
             const { accountId, cookies, password } = item;
 
             try {
+              const account = await prisma.account.findUnique({
+                where: { id: accountId },
+                select: { platform: true },
+              });
+
+              if (!account) {
+                throw new Error('Account not found');
+              }
+
               // 调用单个导入逻辑
-              let cookieArray: any[];
+              let cookieArray: unknown[];
 
               if (typeof cookies === 'string') {
                 cookieArray = JSON.parse(cookies);
@@ -716,7 +992,11 @@ export function setupAccountsRoutes() {
 
               const encryptionPassword =
                 password || process.env.COOKIE_ENCRYPTION_KEY || 'default-key';
-              const encryptedCookies = await encryptCookies(cookieArray, encryptionPassword);
+              const normalizedCookies = normalizeCookiesForStorage(
+                cookieArray,
+                normalizePlatform(account.platform)
+              );
+              const encryptedCookies = await encryptCookies(normalizedCookies, encryptionPassword);
 
               await prisma.account.update({
                 where: { id: accountId },

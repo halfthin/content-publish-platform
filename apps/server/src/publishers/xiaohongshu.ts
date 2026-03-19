@@ -8,6 +8,7 @@ import {
   xiaohongshuSelectors,
 } from '../config/xiaohongshu-selectors';
 import type { PublishJob } from '../queues/publish-queue';
+import { normalizeCookiesForBrowser } from '../utils/cookie-normalizer';
 import { decryptCookies, encryptCookies } from '../utils/encryption';
 
 const logger = createLogger('xiaohongshu-publisher');
@@ -85,8 +86,13 @@ export class XiaohongshuPublisher {
 
     try {
       const cookies = await decryptCookies(encryptedCookies, password);
-      await this.context.addCookies(cookies);
-      logger.info('Cookies loaded', { accountId: this.accountId, count: cookies.length });
+      const normalizedCookies = normalizeCookiesForBrowser(cookies, 'xiaohongshu');
+      await this.context.addCookies(normalizedCookies);
+      logger.info('Cookies loaded', {
+        accountId: this.accountId,
+        inputCount: cookies.length,
+        normalizedCount: normalizedCookies.length,
+      });
       return true;
     } catch (error) {
       logger.error('Failed to load cookies', {
@@ -129,13 +135,13 @@ export class XiaohongshuPublisher {
 
     try {
       const page = await this.context.newPage();
-      await page.goto('https://www.xiaohongshu.com/explore', {
-        waitUntil: 'networkidle',
-        timeout: this.config.timeout || 60000,
+      await page.goto('https://creator.xiaohongshu.com/publish/publish', {
+        waitUntil: 'domcontentloaded',
+        timeout: Math.min(this.config.timeout || 60000, 20000),
       });
+      await page.waitForTimeout(1500);
 
-      // 检查是否已登录（使用多个备选 selector）
-      const hasAvatar = await findElement(page, xiaohongshuSelectors.login.userAvatar, {
+      const hasPublishEntry = await findElement(page, xiaohongshuSelectors.publish.uploadArea, {
         timeout: 5000,
       });
 
@@ -143,15 +149,21 @@ export class XiaohongshuPublisher {
         timeout: 5000,
       });
 
-      const isLoggedIn = !!hasAvatar && !hasLoginButton;
+      const currentUrl = page.url();
+      const isOnLoginPage = /login|signin|passport/i.test(currentUrl);
+      const isLoggedIn =
+        (!!hasPublishEntry || currentUrl.includes('creator.xiaohongshu.com')) &&
+        !hasLoginButton &&
+        !isOnLoginPage;
 
       await page.close();
 
       logger.info('Login status checked', {
         accountId: this.accountId,
         isLoggedIn,
-        hasAvatar: !!hasAvatar,
+        hasPublishEntry: !!hasPublishEntry,
         hasLoginButton: !!hasLoginButton,
+        url: currentUrl,
       });
       return isLoggedIn;
     } catch (error) {

@@ -49,6 +49,19 @@ export interface DouyinSelectors {
   };
 }
 
+type SelectorElement = {
+  click(): Promise<void>;
+  fill(value: string): Promise<void>;
+  clear(): Promise<void>;
+};
+
+type SelectorPage = {
+  waitForSelector(
+    selector: string,
+    options: { state: 'visible' | 'detached'; timeout: number; strict?: boolean }
+  ): Promise<SelectorElement | null>;
+};
+
 /**
  * 抖音平台 Selector 配置
  *
@@ -291,10 +304,10 @@ export const douyinSelectors: DouyinSelectors = {
  * 查找第一个匹配的 selector
  */
 export async function findElement(
-  page: any,
+  page: SelectorPage,
   selectors: string[],
   options?: { timeout?: number; strict?: boolean }
-): Promise<any> {
+): Promise<SelectorElement | null> {
   const timeout = options?.timeout ?? 10000;
 
   for (const selector of selectors) {
@@ -308,7 +321,7 @@ export async function findElement(
       if (element) {
         return element;
       }
-    } catch (error) {}
+    } catch {}
   }
 
   // 所有 selector 都失败
@@ -319,7 +332,7 @@ export async function findElement(
  * 查找并点击元素
  */
 export async function clickElement(
-  page: any,
+  page: SelectorPage,
   selectors: string[],
   options?: { timeout?: number }
 ): Promise<boolean> {
@@ -337,7 +350,7 @@ export async function clickElement(
  * 查找并填充输入框
  */
 export async function fillInput(
-  page: any,
+  page: SelectorPage,
   selectors: string[],
   value: string,
   options?: { timeout?: number; clear?: boolean }
@@ -359,7 +372,7 @@ export async function fillInput(
  * 等待元素消失
  */
 export async function waitForElementDisappear(
-  page: any,
+  page: SelectorPage,
   selectors: string[],
   options?: { timeout?: number }
 ): Promise<void> {

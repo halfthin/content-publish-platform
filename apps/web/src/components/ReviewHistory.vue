@@ -30,7 +30,7 @@
 </template>
 
 <script setup lang="ts">
-import { Check, Close, Clock, Upload } from '@element-plus/icons-vue';
+import { Check, Clock, Close, Upload } from '@element-plus/icons-vue';
 
 export interface ReviewHistoryItem {
   action: 'created' | 'submitted' | 'approved' | 'rejected' | 'published';
@@ -71,7 +71,7 @@ function getTimelineType(action: string): string {
 }
 
 function getTimelineIcon(action: string) {
-  const map: Record<string, any> = {
+  const map: Record<string, typeof Clock> = {
     created: Clock,
     submitted: Upload,
     approved: Check,
@@ -91,6 +91,8 @@ function formatTime(timestamp: string): string {
     second: '2-digit',
   });
 }
+
+void [getActionLabel, getTimelineType, getTimelineIcon, formatTime];
 </script>
 
 <style scoped>

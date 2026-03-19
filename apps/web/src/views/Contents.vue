@@ -205,13 +205,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import { ElMessage } from 'element-plus';
 import { Refresh, Search } from '@element-plus/icons-vue';
-import { useContentStore } from '@/stores/content.store';
+import { ElMessage } from 'element-plus';
+import { onMounted, reactive, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import type { Content } from '@/api/contents';
-import { getContentStatusLabel, getContentStatusType, getContentTypeLabel, getContentTypeType } from '@/utils/status-labels';
+import { useContentStore } from '@/stores/content.store';
+import {
+  getContentStatusLabel,
+  getContentStatusType,
+  getContentTypeLabel,
+  getContentTypeType,
+} from '@/utils/status-labels';
 
 const router = useRouter();
 const store = useContentStore();
@@ -275,7 +280,7 @@ async function loadData() {
       type: filterForm.type || undefined,
       search: filterForm.search || undefined,
     });
-  } catch (error) {
+  } catch {
     ElMessage.error('加载内容列表失败');
   }
 }
@@ -314,7 +319,7 @@ async function handleScanInbox() {
   try {
     await store.scanInboxAction();
     ElMessage.success('收件箱扫描完成');
-  } catch (error) {
+  } catch {
     ElMessage.error('扫描收件箱失败');
   }
 }
@@ -367,9 +372,7 @@ async function confirmBatchReview() {
   batchSubmitting.value = true;
 
   try {
-    const pendingIds = selectedRows.value
-      .filter(c => c.status === 'PENDING')
-      .map(c => c.id);
+    const pendingIds = selectedRows.value.filter((c) => c.status === 'PENDING').map((c) => c.id);
 
     if (pendingIds.length === 0) {
       ElMessage.warning('所选内容中没有待审核的项目');
@@ -383,9 +386,17 @@ async function confirmBatchReview() {
     for (const id of pendingIds) {
       try {
         if (reviewAction.value === 'approve') {
-          await store.approveContentAction(id, batchReviewForm.reviewedBy, batchReviewForm.note || undefined);
+          await store.approveContentAction(
+            id,
+            batchReviewForm.reviewedBy,
+            batchReviewForm.note || undefined
+          );
         } else {
-          await store.rejectContentAction(id, batchReviewForm.reviewedBy, batchReviewForm.note || undefined);
+          await store.rejectContentAction(
+            id,
+            batchReviewForm.reviewedBy,
+            batchReviewForm.note || undefined
+          );
         }
         successCount++;
       } catch {
@@ -397,7 +408,7 @@ async function confirmBatchReview() {
     batchReviewDialogVisible.value = false;
     clearSelection();
     loadData();
-  } catch (error) {
+  } catch {
     ElMessage.error('批量审核失败');
   } finally {
     batchSubmitting.value = false;
@@ -443,7 +454,7 @@ async function confirmReview() {
 
     reviewDialogVisible.value = false;
     loadData();
-  } catch (error) {
+  } catch {
     ElMessage.error('操作失败');
   } finally {
     submitting.value = false;
@@ -453,6 +464,28 @@ async function confirmReview() {
 onMounted(() => {
   loadData();
 });
+
+void [
+  Refresh,
+  Search,
+  getTypeLabel,
+  getTypeTagType,
+  getStatusLabel,
+  getStatusTagType,
+  formatDate,
+  applyFilter,
+  handlePageChange,
+  handleSizeChange,
+  handleRowClick,
+  handleView,
+  handleScanInbox,
+  handleSelectionChange,
+  handleBatchApprove,
+  handleBatchReject,
+  confirmBatchReview,
+  handleApprove,
+  confirmReview,
+];
 </script>
 
 <style scoped>

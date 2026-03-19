@@ -8,10 +8,10 @@
  * 使用：bun tools/analyze-selectors.ts
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { type Browser, type BrowserContext, chromium, type Page } from 'playwright';
-import { fileURLToPath } from 'url';
 import { XIAOHONGSHU_COOKIES } from '../../../.workspace/config/xiaohongshu.cookies.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -24,6 +24,27 @@ interface PageConfig {
   displayName: string;
   url: string;
   targets: string[];
+}
+
+interface PageSelectorResult {
+  name: string;
+  url: string;
+  selectors: Record<string, string[]>;
+  error?: string;
+}
+
+interface SelectorAnalysisResult {
+  version: string;
+  generatedAt: string;
+  pages: Record<string, PageSelectorResult>;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function getErrorStack(error: unknown): string | undefined {
+  return error instanceof Error ? error.stack : undefined;
 }
 
 const PAGES: PageConfig[] = [
@@ -77,7 +98,7 @@ const PAGES: PageConfig[] = [
 
 async function generateSelectorsForTarget(
   page: Page,
-  target: string,
+  _target: string,
   keywords: string[]
 ): Promise<string[]> {
   const selectors: string[] = [];
@@ -102,7 +123,7 @@ async function generateSelectorsForTarget(
               .filter((c) => c)
               .slice(0, 2);
             if (classes.length > 0) {
-              selector += '.' + classes.join('.');
+              selector += `.${classes.join('.')}`;
             }
           }
 
@@ -214,7 +235,7 @@ async function main() {
     }));
     await context.addCookies(fixedCookies);
 
-    const result: any = {
+    const result: SelectorAnalysisResult = {
       version: '1.0.0',
       generatedAt: new Date().toISOString(),
       pages: {},
@@ -238,13 +259,14 @@ async function main() {
             .replace(/\/explore\/[^?]+/, '/explore/*'),
           selectors,
         };
-      } catch (error: any) {
-        console.error(`❌ 分析失败：${error.message}`);
+      } catch (error: unknown) {
+        const message = getErrorMessage(error);
+        console.error(`❌ 分析失败：${message}`);
         result.pages[pageConfig.name] = {
           name: pageConfig.displayName,
           url: pageConfig.url,
           selectors: {},
-          error: error.message,
+          error: message,
         };
       } finally {
         await page.close();
@@ -258,7 +280,7 @@ async function main() {
     console.log(`✅ 配置已保存：${outputPath}`);
 
     // 生成摘要
-    console.log('\n' + '='.repeat(60));
+    console.log(`\n${'='.repeat(60)}`);
     console.log('📊 分析摘要');
     console.log('='.repeat(60));
 
@@ -275,9 +297,12 @@ async function main() {
     console.log('='.repeat(60));
 
     console.log('\n✅ 分析完成！\n');
-  } catch (error: any) {
-    console.error('\n❌ 分析失败:', error.message);
-    console.error(error.stack);
+  } catch (error: unknown) {
+    console.error('\n❌ 分析失败:', getErrorMessage(error));
+    const stack = getErrorStack(error);
+    if (stack) {
+      console.error(stack);
+    }
     process.exit(1);
   } finally {
     if (browser) await browser.close();

@@ -9,10 +9,10 @@
  * 使用：bun tools/analyze-selectors-deep.ts
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { type Browser, type BrowserContext, chromium, type Page } from 'playwright';
-import { fileURLToPath } from 'url';
 import { XIAOHONGSHU_COOKIES } from '../../../.workspace/config/xiaohongshu.cookies.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -32,6 +32,37 @@ interface PageAnalysis {
   displayName: string;
   url: string;
   fields: TargetField[];
+}
+
+interface FieldSelectorAnalysisResult {
+  selectors: string[];
+  verified: boolean;
+  count: number;
+}
+
+interface DeepPageResult {
+  name: string;
+  url: string;
+  selectors: Record<string, FieldSelectorAnalysisResult>;
+  successRate: string;
+  totalFields?: number;
+  successFields?: number;
+  error?: string;
+}
+
+interface DeepSelectorAnalysisResult {
+  version: string;
+  generatedAt: string;
+  targetSuccessRate: string;
+  pages: Record<string, DeepPageResult>;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function getErrorStack(error: unknown): string | undefined {
+  return error instanceof Error ? error.stack : undefined;
 }
 
 const PAGES: PageAnalysis[] = [
@@ -177,7 +208,7 @@ async function strategy1_ClassNameKeywords(page: Page, keywords: string[]): Prom
             .filter((c) => c)
             .slice(0, 3);
           if (classes.length > 0) {
-            selector += '.' + classes.join('.');
+            selector += `.${classes.join('.')}`;
             results.push(selector);
           }
 
@@ -259,7 +290,7 @@ async function strategy3_TextContent(page: Page, fieldName: string): Promise<str
               .filter((c) => c)
               .slice(0, 2);
             if (classes.length > 0) {
-              selector += '.' + classes.join('.');
+              selector += `.${classes.join('.')}`;
             }
           }
 
@@ -427,7 +458,7 @@ async function main() {
     }));
     await context.addCookies(fixedCookies);
 
-    const result: any = {
+    const result: DeepSelectorAnalysisResult = {
       version: '1.0.0',
       generatedAt: new Date().toISOString(),
       targetSuccessRate: '100%',
@@ -447,7 +478,7 @@ async function main() {
         await page.goto(pageConfig.url, { waitUntil: 'networkidle', timeout: 60000 });
         await page.waitForTimeout(8000); // 增加等待时间确保动态内容加载
 
-        const pageResult: any = {
+        const pageResult: DeepPageResult = {
           name: pageConfig.displayName,
           url: pageConfig.url
             .replace(/\/profile\/[^?]+/, '/profile/*')
@@ -485,13 +516,14 @@ async function main() {
         console.log(
           `\n${pageConfig.displayName} 成功率：${pageResult.successRate} (${successCount}/${pageConfig.fields.length})`
         );
-      } catch (error: any) {
-        console.error(`❌ 分析失败：${error.message}`);
+      } catch (error: unknown) {
+        const message = getErrorMessage(error);
+        console.error(`❌ 分析失败：${message}`);
         result.pages[pageConfig.name] = {
           name: pageConfig.displayName,
           url: pageConfig.url,
           selectors: {},
-          error: error.message,
+          error: message,
           successRate: '0%',
         };
       } finally {
@@ -500,7 +532,7 @@ async function main() {
     }
 
     // 保存配置
-    console.log('\n' + '='.repeat(70));
+    console.log(`\n${'='.repeat(70)}`);
     console.log('💾 保存配置文件...');
 
     const outputPath = path.join(__dirname, '../../selector.conf.json');
@@ -516,7 +548,7 @@ async function main() {
     console.log(`✅ 配置已保存：${outputPath}`);
 
     // 生成摘要
-    console.log('\n' + '='.repeat(70));
+    console.log(`\n${'='.repeat(70)}`);
     console.log('📊 分析摘要 - 100% 成功率目标');
     console.log('='.repeat(70));
 
@@ -554,9 +586,12 @@ async function main() {
     } else {
       console.log(`\n⚠️ 未达到 100% 成功率，还需优化 ${totalFields - totalSuccess} 个字段\n`);
     }
-  } catch (error: any) {
-    console.error('\n❌ 分析失败:', error.message);
-    console.error(error.stack);
+  } catch (error: unknown) {
+    console.error('\n❌ 分析失败:', getErrorMessage(error));
+    const stack = getErrorStack(error);
+    if (stack) {
+      console.error(stack);
+    }
     process.exit(1);
   } finally {
     if (browser) await browser.close();

@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
-import type { Job } from 'bullmq';
-import { prisma } from '../config/prisma';
 import { PublishQueue } from './publish-queue';
+
+const describeIfIntegration =
+  process.env.RUN_INTEGRATION_TESTS === 'true' ? describe : describe.skip;
 
 // Mock publishers
 const mockXiaohongshuPublisher = {
@@ -41,7 +42,7 @@ mock.module('../publishers/weibo', () => ({
   WeiboPublisher: mock(() => mockWeiboPublisher),
 }));
 
-describe('PublishQueue', () => {
+describeIfIntegration('PublishQueue', () => {
   let publishQueue: PublishQueue;
 
   beforeEach(() => {
@@ -73,7 +74,7 @@ describe('PublishQueue', () => {
     test('should return same instance', () => {
       const instance1 = PublishQueue.getInstance();
       const instance2 = PublishQueue.getInstance();
-      
+
       expect(instance1).toBe(instance2);
     });
   });
@@ -81,12 +82,14 @@ describe('PublishQueue', () => {
   describe('Queue initialization', () => {
     test('should initialize with default options', () => {
       expect(publishQueue).toBeDefined();
-      expect(publishQueue['queue']).toBeDefined();
-      expect(publishQueue['worker']).toBeDefined();
+      expect(publishQueue).toHaveProperty('queue');
+      expect(publishQueue).toHaveProperty('workers');
     });
 
     test('should have correct queue name', () => {
-      expect(publishQueue['queue'].name).toBe('publish-queue');
+      expect((publishQueue as unknown as { queue: { name: string } }).queue.name).toBe(
+        'publish-jobs'
+      );
     });
   });
 
@@ -105,7 +108,7 @@ describe('PublishQueue', () => {
       };
 
       const job = await publishQueue.addJob(jobData);
-      
+
       expect(job).toBeDefined();
       expect(job.id).toBeDefined();
       expect(job.data).toEqual(jobData);
@@ -146,7 +149,7 @@ describe('PublishQueue', () => {
       const invalidJobData = {
         contentId: 'test-content',
         accountId: 'test-account',
-        platform: 'invalid_platform' as any,
+        platform: 'invalid_platform',
         content: {
           title: 'Test',
           description: 'Test',
@@ -156,7 +159,7 @@ describe('PublishQueue', () => {
       };
 
       try {
-        await publishQueue.addJob(invalidJobData);
+        await publishQueue.addJob(invalidJobData as never);
         expect(true).toBe(false); // Should not reach here
       } catch (error) {
         expect(error).toBeInstanceOf(Error);
@@ -177,7 +180,7 @@ describe('PublishQueue', () => {
       };
 
       try {
-        await publishQueue.addJob(incompleteJobData as any);
+        await publishQueue.addJob(incompleteJobData as never);
         expect(true).toBe(false); // Should not reach here
       } catch (error) {
         expect(error).toBeInstanceOf(Error);
@@ -200,22 +203,22 @@ describe('PublishQueue', () => {
       };
 
       const job = await publishQueue.addJob(jobData);
-      const status = await publishQueue.getJobStatus(job.id!);
-      
+      const status = await publishQueue.getJobState(String(job.id));
+
       expect(status).toBeDefined();
       expect(['waiting', 'active', 'completed', 'failed']).toContain(status);
     });
 
     test('should return null for non-existent job', async () => {
-      const status = await publishQueue.getJobStatus('non-existent-job-id');
+      const status = await publishQueue.getJobState('non-existent-job-id');
       expect(status).toBeNull();
     });
   });
 
   describe('Queue statistics', () => {
     test('should get queue stats', async () => {
-      const stats = await publishQueue.getQueueStats();
-      
+      const stats = await publishQueue.getStats();
+
       expect(stats).toBeDefined();
       expect(stats.waiting).toBeGreaterThanOrEqual(0);
       expect(stats.active).toBeGreaterThanOrEqual(0);
@@ -227,10 +230,12 @@ describe('PublishQueue', () => {
   describe('Cleanup', () => {
     test('should close queue and worker', async () => {
       await publishQueue.close();
-      
+
       // Verify queue is closed
-      expect(publishQueue['queue'].closed).toBe(true);
-      expect(publishQueue['worker'].closed).toBe(true);
+      expect((publishQueue as unknown as { queue: { closed: boolean } }).queue.closed).toBe(true);
+      const workers = (publishQueue as unknown as { workers: Map<string, { closed: boolean }> })
+        .workers;
+      expect(Array.from(workers.values()).every((worker) => worker.closed)).toBe(true);
     });
   });
 });

@@ -1,4 +1,10 @@
-import { createCipheriv, createDecipheriv, randomBytes, scrypt } from 'node:crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  randomBytes,
+  scrypt,
+  timingSafeEqual,
+} from 'node:crypto';
 import { createLogger } from '../config/logger';
 
 const logger = createLogger('encryption');
@@ -8,7 +14,6 @@ const IV_LENGTH = 16;
 const SALT_LENGTH = 32;
 const AUTH_TAG_LENGTH = 16;
 const KEY_LENGTH = 32;
-const ITERATIONS = 100000;
 
 /**
  * 从密码派生密钥
@@ -126,10 +131,35 @@ export function generateSalt(): string {
   return randomBytes(SALT_LENGTH).toString('hex');
 }
 
+function isValidCookie(cookie: unknown): boolean {
+  if (!cookie || typeof cookie !== 'object') {
+    return false;
+  }
+
+  const input = cookie as Record<string, unknown>;
+  const hasName = typeof input.name === 'string' && input.name.trim().length > 0;
+  const hasValue =
+    typeof input.value === 'string' ||
+    typeof input.value === 'number' ||
+    typeof input.value === 'boolean';
+  const hasDomain = typeof input.domain === 'string' && input.domain.trim().length > 0;
+  const hasUrl = typeof input.url === 'string' && input.url.trim().length > 0;
+
+  return hasName && hasValue && (hasDomain || hasUrl);
+}
+
 /**
  * 加密 Cookie 数据
  */
-export async function encryptCookies(cookies: any[], password: string): Promise<string> {
+export async function encryptCookies(cookies: unknown[], password: string): Promise<string> {
+  if (!Array.isArray(cookies) || cookies.length === 0) {
+    throw new Error('Cookie array must not be empty');
+  }
+
+  if (!cookies.every(isValidCookie)) {
+    throw new Error('Cookie structure is invalid');
+  }
+
   const jsonString = JSON.stringify(cookies);
   return encrypt(jsonString, password);
 }
@@ -137,7 +167,10 @@ export async function encryptCookies(cookies: any[], password: string): Promise<
 /**
  * 解密 Cookie 数据
  */
-export async function decryptCookies(encryptedCookies: string, password: string): Promise<any[]> {
+export async function decryptCookies(
+  encryptedCookies: string,
+  password: string
+): Promise<Record<string, unknown>[]> {
   const jsonString = await decrypt(encryptedCookies, password);
   return JSON.parse(jsonString);
 }
@@ -154,4 +187,48 @@ export async function verifyEncryptionKey(password: string, testSalt: string): P
   } catch {
     return false;
   }
+}
+
+export function validateEncryptionKey(password: string): boolean {
+  return (
+    password.length >= 16 &&
+    /[a-z]/.test(password) &&
+    /[A-Z]/.test(password) &&
+    /\d/.test(password) &&
+    /[^A-Za-z0-9]/.test(password)
+  );
+}
+
+export function generateEncryptionKey(length = 24): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*()-_=+';
+
+  while (true) {
+    const bytes = randomBytes(length);
+    const password = Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
+    if (validateEncryptionKey(password)) {
+      return password;
+    }
+  }
+}
+
+export async function hashPassword(password: string): Promise<string> {
+  const salt = generateSalt();
+  const derived = await deriveKey(password, Buffer.from(salt, 'hex'));
+  return `${salt}:${derived.toString('hex')}`;
+}
+
+export async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
+  const [salt, hash] = storedHash.split(':');
+  if (!salt || !hash) {
+    return false;
+  }
+
+  const derived = await deriveKey(password, Buffer.from(salt, 'hex'));
+  const stored = Buffer.from(hash, 'hex');
+
+  if (stored.length !== derived.length) {
+    return false;
+  }
+
+  return timingSafeEqual(stored, derived);
 }

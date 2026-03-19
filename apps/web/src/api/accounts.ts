@@ -1,15 +1,27 @@
 import apiClient from './client';
 
+export interface BrowserCookie {
+  name: string;
+  value: string;
+  domain?: string;
+  url?: string;
+  path?: string;
+  expires?: number;
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: 'Strict' | 'Lax' | 'None';
+}
+
 export interface Account {
   id: string;
   name: string;
   platform: string;
   username?: string;
-  status: 'active' | 'inactive';
+  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'BANNED';
   loginStatus: 'LOGGED_IN' | 'EXPIRED' | 'UNKNOWN';
   groupId?: string;
   remark?: string;
-  cookies?: any;
+  cookies?: BrowserCookie[] | string;
   cookieUpdatedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -29,12 +41,34 @@ export interface UpdateAccountDto {
   groupId?: string;
   username?: string;
   remark?: string;
-  status?: 'active' | 'inactive';
+  status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'BANNED';
 }
 
 export interface CookieConfigDto {
-  cookies: any[] | string;
+  cookies: BrowserCookie[] | string;
   password?: string;
+}
+
+export interface VerifyCookieDetails {
+  url: string;
+  pageTitle: string;
+  httpStatus?: number;
+  hasAvatar: boolean;
+  hasLoginButton: boolean;
+  hasAuthCookies?: boolean;
+  hasCreatorPublishEntry?: boolean;
+  detectedProfileLinks?: {
+    htmlProfileLinks: string[];
+    domProfileLinks: string[];
+  };
+}
+
+export interface VerifyCookieResult {
+  isLoggedIn: boolean;
+  verifiedAt: string | Date;
+  platform: string;
+  verifyMethod?: string;
+  verifyDetails?: VerifyCookieDetails;
 }
 
 /**
@@ -97,8 +131,8 @@ export async function saveCookie(id: string, data: CookieConfigDto) {
  * 验证 Cookie
  */
 export async function verifyCookie(id: string, password?: string) {
-  const response = await apiClient.get(`/accounts/${id}/cookies/verify`, { 
-    params: { password } 
+  const response = await apiClient.get(`/accounts/${id}/cookies/verify`, {
+    params: { password },
   });
   return response;
 }

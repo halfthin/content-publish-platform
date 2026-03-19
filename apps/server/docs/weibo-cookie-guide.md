@@ -133,7 +133,7 @@ const encrypted = await encryptCookies(cookies, process.env.COOKIE_ENCRYPTION_KE
 
 ```bash
 cd /home/halfthin/dev/content-publish-platform/apps/server
-bun test-weibo-publisher.ts
+bun test
 ```
 
 **预期输出:**

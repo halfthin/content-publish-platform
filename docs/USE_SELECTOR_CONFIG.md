@@ -30,6 +30,8 @@
 
 ## 🔧 使用方法
 
+说明：历史调试文档中提到的若干一次性 `test-*` / `debug-*` 脚本已清理，本页示例以配置文件和正式代码调用为准。
+
 ### 方式 1：直接加载配置文件
 
 ```javascript
@@ -330,7 +332,7 @@ export class XiaohongshuScraper {
 **测试脚本**:
 ```bash
 cd ~/dev/content-publish-platform/apps/server
-bun test-selector-config-integration.mjs
+bun test
 ```
 
 ---

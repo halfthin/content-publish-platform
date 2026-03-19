@@ -9,7 +9,7 @@
  * const selectors = loader.getSelectors('userProfile');
  */
 
-import { readFile } from 'fs/promises';
+import { readFile } from 'node:fs/promises';
 
 export class SelectorConfigLoader {
   constructor(configPath = '/home/halfthin/dev/content-publish-platform/selector.conf.json') {

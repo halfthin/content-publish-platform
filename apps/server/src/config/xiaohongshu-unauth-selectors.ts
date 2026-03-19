@@ -23,6 +23,14 @@ export interface UnauthPageSelectors {
   comment: string[];
 }
 
+type SelectorElement = {
+  textContent(): Promise<string | null>;
+};
+
+type SelectorCard = {
+  $(selector: string): Promise<SelectorElement | null>;
+};
+
 /**
  * 未登录页面选择器配置
  */
@@ -63,12 +71,15 @@ export const unauthPageSelectors: UnauthPageSelectors = {
 /**
  * 在卡片内查找元素
  */
-export async function findElementInCard(card: any, selectors: string[]): Promise<any> {
+export async function findElementInCard(
+  card: SelectorCard,
+  selectors: string[]
+): Promise<SelectorElement | null> {
   for (const selector of selectors) {
     try {
       const el = await card.$(selector);
       if (el) return el;
-    } catch (error) {}
+    } catch {}
   }
   return null;
 }
@@ -76,7 +87,7 @@ export async function findElementInCard(card: any, selectors: string[]): Promise
 /**
  * 提取元素文本
  */
-export async function getElementText(card: any, selectors: string[]): Promise<string> {
+export async function getElementText(card: SelectorCard, selectors: string[]): Promise<string> {
   const el = await findElementInCard(card, selectors);
   if (el) {
     const text = await el.textContent();

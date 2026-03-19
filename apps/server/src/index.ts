@@ -3,7 +3,7 @@ import { Elysia } from 'elysia';
 import { logger } from './config/logger';
 import { browserPool, initializeBrowser } from './config/playwright';
 import { disconnectPrisma } from './config/prisma';
-import { publishQueue, startAllWorkers } from './queues/publish-queue';
+import { getPublishQueue, startAllWorkers } from './queues/publish-queue';
 import { setupRoutes } from './routes';
 import { startFileWatcher, stopFileWatcher } from './services/file-watcher.service';
 
@@ -68,7 +68,7 @@ const shutdown = async (signal: string) => {
 
   // 2. 关闭发布队列
   try {
-    await publishQueue.close();
+    await getPublishQueue().close();
     logger.info({ module: 'publish-queue' }, 'Publish queue closed');
   } catch (error) {
     logger.error({ module: 'publish-queue', error }, 'Error closing publish queue');

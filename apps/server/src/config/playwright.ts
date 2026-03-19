@@ -1,4 +1,5 @@
 import { type Browser, type BrowserContext, chromium } from 'playwright';
+import { normalizeCookiesForBrowser, type SupportedPlatform } from '../utils/cookie-normalizer';
 import { createLogger } from './logger';
 
 const logger = createLogger('playwright');
@@ -113,8 +114,9 @@ export class BrowserPool {
   async createContext(
     accountId: string,
     options?: {
-      cookies?: any[];
+      cookies?: unknown[];
       storageState?: string;
+      platform?: SupportedPlatform;
     }
   ): Promise<BrowserContext> {
     if (!this.browser) {
@@ -128,29 +130,36 @@ export class BrowserPool {
     }
 
     try {
+      const normalizedCookies = options?.cookies
+        ? normalizeCookiesForBrowser(options.cookies, options.platform)
+        : [];
       const context = await this.browser.newContext({
         viewport: this.config.viewport,
         userAgent: this.config.userAgent,
         locale: 'zh-CN',
         timezoneId: 'Asia/Shanghai',
-        ...options,
+        storageState: options?.storageState,
       });
 
       // P4: 反自动化补丁 - 全局隐藏 webdriver 特征
       await context.addInitScript(() => {
         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
         // 模拟真实插件列表
-        Object.defineProperty(navigator, 'plugins', { 
+        Object.defineProperty(navigator, 'plugins', {
           get: () => [
             { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer' },
-            { name: 'Native Client', filename: 'internal-nacl-plugin' }
-          ] 
+            { name: 'Native Client', filename: 'internal-nacl-plugin' },
+          ],
         });
       });
 
       // 设置默认超时
       context.setDefaultTimeout(this.config.timeout);
       context.setDefaultNavigationTimeout(this.config.timeout);
+
+      if (normalizedCookies.length > 0) {
+        await context.addCookies(normalizedCookies);
+      }
 
       this.contexts.set(accountId, context);
 
@@ -240,7 +249,14 @@ export async function initializeBrowser(config?: Partial<PlaywrightConfig>): Pro
   return pool;
 }
 
-export async function getBrowserContext(accountId: string, options?: any): Promise<BrowserContext> {
+export async function getBrowserContext(
+  accountId: string,
+  options?: {
+    cookies?: unknown[];
+    storageState?: string;
+    platform?: SupportedPlatform;
+  }
+): Promise<BrowserContext> {
   const pool = BrowserPool.getInstance();
   return pool.createContext(accountId, options);
 }

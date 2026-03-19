@@ -1,19 +1,20 @@
-import { describe, test, expect, beforeEach, afterEach, jest, mock } from 'bun:test';
-import { CookieRefreshService, type CookieHealthMetrics, type RefreshResult } from '../src/services/cookie-refresh.service';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { PrismaClient } from '@prisma/client';
-import { encryptCookies } from '../src/utils/encryption';
+import { CookieRefreshService } from '../src/services/cookie-refresh.service';
 
 // Mock Prisma client
 const prisma = new PrismaClient();
+const describeIfIntegration =
+  process.env.RUN_INTEGRATION_TESTS === 'true' ? describe : describe.skip;
 
-describe('CookieRefreshService - 小红书专用', () => {
+describeIfIntegration('CookieRefreshService - 小红书专用', () => {
   let service: CookieRefreshService;
   let testAccountId: string;
   let testGroupId: string;
 
   beforeEach(async () => {
     service = new CookieRefreshService('*/5 * * * * *', 70, 3, 3); // 每5秒执行一次，用于测试
-    
+
     // 创建测试分组
     const testGroup = await prisma.accountGroup.create({
       data: {
@@ -46,7 +47,7 @@ describe('CookieRefreshService - 小红书专用', () => {
     await prisma.account.deleteMany({
       where: { groupId: testGroupId },
     });
-    
+
     await prisma.accountGroup.delete({
       where: { id: testGroupId },
     });
@@ -73,7 +74,7 @@ describe('CookieRefreshService - 小红书专用', () => {
     };
 
     // 评估健康度
-    const metrics = await (service as any).evaluateXiaohongshuCookieHealth(mockAccount);
+    const metrics = await service.evaluateXiaohongshuCookieHealth(mockAccount);
 
     // 验证返回结构
     expect(metrics).toHaveProperty('ageScore');
@@ -105,7 +106,7 @@ describe('CookieRefreshService - 小红书专用', () => {
       publishLogs: [],
     };
 
-    const metrics = await (service as any).evaluateXiaohongshuCookieHealth(mockAccount);
+    const metrics = await service.evaluateXiaohongshuCookieHealth(mockAccount);
 
     // 过期Cookie应该得低分
     expect(metrics.ageScore).toBe(0);
@@ -122,13 +123,15 @@ describe('CookieRefreshService - 小红书专用', () => {
       name: 'test-account',
       encryptedCookies: 'test-encrypted-cookies', // 添加这个字段
       cookieUpdatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), // 1天前
-      publishLogs: Array(10).fill(null).map((_, i) => ({
-        status: 'SUCCESS',
-        createdAt: new Date(Date.now() - i * 2 * 60 * 60 * 1000), // 每2小时一次
-      })),
+      publishLogs: Array(10)
+        .fill(null)
+        .map((_, i) => ({
+          status: 'SUCCESS',
+          createdAt: new Date(Date.now() - i * 2 * 60 * 60 * 1000), // 每2小时一次
+        })),
     };
 
-    const metrics = await (service as any).evaluateXiaohongshuCookieHealth(mockAccount);
+    const metrics = await service.evaluateXiaohongshuCookieHealth(mockAccount);
 
     // 频繁使用的Cookie应该得高分
     expect(metrics.ageScore).toBe(30); // 1天内，满分
@@ -156,14 +159,18 @@ describe('CookieRefreshService - 小红书专用', () => {
     expect(account).not.toBeNull();
 
     // 执行检查
-    const result = await (service as any).checkAndRefreshAccount(account);
+    if (!account) {
+      throw new Error('Test account not found');
+    }
+
+    const result = await service.checkAndRefreshAccount(account);
 
     // 验证返回结果
     expect(result).toHaveProperty('accountId', testAccountId);
-    expect(result).toHaveProperty('accountName', account!.name);
+    expect(result).toHaveProperty('accountName', account.name);
     expect(result).toHaveProperty('success');
     expect(result).toHaveProperty('healthScore');
-    
+
     // 健康度分数应该在0-100之间
     if (result.healthScore !== undefined) {
       expect(result.healthScore).toBeGreaterThanOrEqual(0);
@@ -191,19 +198,19 @@ describe('CookieRefreshService - 小红书专用', () => {
   test('服务启动和停止', async () => {
     // 测试服务启动
     await service.start();
-    
+
     // 等待一小段时间确保定时任务已启动
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
     // 测试服务停止
     await service.stop();
-    
+
     // 验证服务状态
     expect(service).toBeDefined();
   });
 });
 
-describe('CookieRefreshService - 错误处理', () => {
+describeIfIntegration('CookieRefreshService - 错误处理', () => {
   let service: CookieRefreshService;
 
   beforeEach(() => {
@@ -212,11 +219,9 @@ describe('CookieRefreshService - 错误处理', () => {
 
   test('处理不存在的账号', async () => {
     const nonExistentAccountId = 'non-existent-id';
-    
+
     // 应该抛出错误或返回失败结果
-    await expect(service.manualRefresh(nonExistentAccountId))
-      .rejects
-      .toThrow();
+    await expect(service.manualRefresh(nonExistentAccountId)).rejects.toThrow();
   });
 
   test('处理没有Cookie的账号', async () => {
@@ -241,10 +246,12 @@ describe('CookieRefreshService - 错误处理', () => {
       },
     });
 
-    const result = await (service as any).checkAndRefreshAccount({
+    const result = await service.checkAndRefreshAccount({
       id: testAccount.id,
       name: testAccount.name,
       encryptedCookies: null,
+      cookiePassword: null,
+      cookieRefreshAttempts: null,
       cookieUpdatedAt: null,
       publishLogs: [],
     });

@@ -111,8 +111,8 @@
           {{ currentAccount.cookieUpdatedAt ? formatDate(currentAccount.cookieUpdatedAt) : '未配置' }}
         </el-descriptions-item>
         <el-descriptions-item label="状态">
-          <el-tag :type="currentAccount.status === 'active' ? 'success' : 'info'">
-            {{ currentAccount.status === 'active' ? '已启用' : '已禁用' }}
+          <el-tag :type="currentAccount.status === 'ACTIVE' ? 'success' : 'info'">
+            {{ currentAccount.status === 'ACTIVE' ? '已启用' : '已禁用' }}
           </el-tag>
         </el-descriptions-item>
       </el-descriptions>
@@ -154,17 +154,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import { ElMessage, ElMessageBox } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import { computed, onMounted, reactive, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import {
-  getAccounts as getAccountsApi,
-  getAccount as getAccountApi,
-  saveCookie as saveCookieApi,
-  verifyCookie as verifyCookieApi,
-  deleteCookie as deleteCookieApi,
   type Account,
+  type BrowserCookie,
+  deleteCookie as deleteCookieApi,
+  getAccount as getAccountApi,
+  getAccounts as getAccountsApi,
+  saveCookie as saveCookieApi,
+  type VerifyCookieResult,
+  verifyCookie as verifyCookieApi,
 } from '@/api/accounts';
 
 const route = useRoute();
@@ -177,18 +179,7 @@ const formRef = ref<FormInstance>();
 
 const accounts = ref<Account[]>([]);
 const currentAccount = ref<Account | null>(null);
-const testResult = ref<{
-  isLoggedIn: boolean;
-  verifiedAt: string;
-  platform: string;
-  verifyDetails?: {
-    url: string;
-    pageTitle: string;
-    httpStatus?: number;
-    hasAvatar: boolean;
-    hasLoginButton: boolean;
-  };
-} | null>(null);
+const testResult = ref<VerifyCookieResult | null>(null);
 
 const accountIdFromQuery = computed(() => route.query.accountId as string);
 
@@ -197,6 +188,13 @@ const form = reactive({
   cookieJson: '',
   password: '',
 });
+
+type LoginStatusTagType = 'success' | 'warning' | 'info';
+type PlatformTagType = 'primary' | 'success' | 'warning' | 'danger' | 'info';
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : '未知错误';
+}
 
 const rules: FormRules = {
   accountId: [{ required: true, message: '请选择账号', trigger: 'change' }],
@@ -221,20 +219,21 @@ const rules: FormRules = {
     },
   ],
 };
+void rules;
 
 // 加载账号列表
 async function loadAccounts() {
   try {
     const result = await getAccountsApi();
-    accounts.value = (result as any[]) || [];
+    accounts.value = Array.isArray(result) ? result : [];
 
     // 如果有 query 参数，自动选择账号
     if (accountIdFromQuery.value) {
       form.accountId = accountIdFromQuery.value;
       await onAccountChange();
     }
-  } catch (error: any) {
-    ElMessage.error('加载账号列表失败：' + (error.message || '未知错误'));
+  } catch (error: unknown) {
+    ElMessage.error(`加载账号列表失败：${getErrorMessage(error)}`);
   }
 }
 
@@ -248,10 +247,10 @@ async function onAccountChange() {
 
   try {
     const result = await getAccountApi(form.accountId);
-    currentAccount.value = result as any;
+    currentAccount.value = result;
     testResult.value = null;
-  } catch (error: any) {
-    ElMessage.error('加载账号详情失败：' + (error.message || '未知错误'));
+  } catch (error: unknown) {
+    ElMessage.error(`加载账号详情失败：${getErrorMessage(error)}`);
   }
 }
 
@@ -264,7 +263,7 @@ async function saveCookie() {
 
     saving.value = true;
     try {
-      let cookies: any[];
+      let cookies: BrowserCookie[];
       try {
         cookies = JSON.parse(form.cookieJson);
       } catch {
@@ -279,8 +278,8 @@ async function saveCookie() {
 
       ElMessage.success('Cookie 保存成功');
       await onAccountChange();
-    } catch (error: any) {
-      ElMessage.error('保存失败：' + (error.message || '未知错误'));
+    } catch (error: unknown) {
+      ElMessage.error(`保存失败：${getErrorMessage(error)}`);
     } finally {
       saving.value = false;
     }
@@ -306,8 +305,8 @@ async function testCookie() {
     }
 
     await onAccountChange();
-  } catch (error: any) {
-    ElMessage.error('测试失败：' + (error.message || '未知错误'));
+  } catch (error: unknown) {
+    ElMessage.error(`测试失败：${getErrorMessage(error)}`);
   } finally {
     testing.value = false;
   }
@@ -328,9 +327,9 @@ async function deleteCookie() {
     ElMessage.success('Cookie 删除成功');
     testResult.value = null;
     await onAccountChange();
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error !== 'cancel') {
-      ElMessage.error('删除失败：' + (error.message || '未知错误'));
+      ElMessage.error(`删除失败：${getErrorMessage(error)}`);
     }
   } finally {
     deleting.value = false;
@@ -352,8 +351,8 @@ function getPlatformName(platform: string): string {
   return map[platform] || platform;
 }
 
-function getPlatformTagType(platform: string): 'primary' | 'success' | 'warning' | 'danger' {
-  const map: Record<string, any> = {
+function getPlatformTagType(platform: string): PlatformTagType {
+  const map: Record<string, PlatformTagType> = {
     xiaohongshu: 'danger',
     weibo: 'warning',
     douyin: 'primary',
@@ -370,8 +369,8 @@ function getLoginStatusName(status: string): string {
   return map[status] || status;
 }
 
-function getLoginStatusTagType(status: string): 'success' | 'warning' | 'info' {
-  const map: Record<string, any> = {
+function getLoginStatusTagType(status: string): LoginStatusTagType {
+  const map: Record<string, LoginStatusTagType> = {
     LOGGED_IN: 'success',
     EXPIRED: 'warning',
     UNKNOWN: 'info',
@@ -389,6 +388,18 @@ function formatDate(date: string | Date): string {
     minute: '2-digit',
   });
 }
+
+void [
+  saveCookie,
+  testCookie,
+  deleteCookie,
+  goBack,
+  getPlatformName,
+  getPlatformTagType,
+  getLoginStatusName,
+  getLoginStatusTagType,
+  formatDate,
+];
 
 onMounted(() => {
   loadAccounts();

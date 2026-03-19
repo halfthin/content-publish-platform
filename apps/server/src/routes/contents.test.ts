@@ -4,8 +4,10 @@ import { prisma } from '../config/prisma';
 import { setupContentsRoutes } from './contents';
 
 const app = new Elysia().use(setupContentsRoutes());
+const describeIfIntegration =
+  process.env.RUN_INTEGRATION_TESTS === 'true' ? describe : describe.skip;
 
-describe('Contents API', () => {
+describeIfIntegration('Contents API', () => {
   beforeAll(async () => {
     // 清理测试数据
     await prisma.content.deleteMany({});

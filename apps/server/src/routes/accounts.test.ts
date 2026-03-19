@@ -4,8 +4,10 @@ import { prisma } from '../config/prisma';
 import { setupAccountsRoutes } from './accounts';
 
 const app = new Elysia().use(setupAccountsRoutes());
+const describeIfIntegration =
+  process.env.RUN_INTEGRATION_TESTS === 'true' ? describe : describe.skip;
 
-describe('Accounts API', () => {
+describeIfIntegration('Accounts API', () => {
   beforeAll(async () => {
     // 清理测试数据
     await prisma.account.deleteMany({});
@@ -41,7 +43,7 @@ describe('Accounts API', () => {
         name: '测试账号',
         platform: 'xiaohongshu',
         username: 'test_user',
-        status: 'active' as const,
+        status: 'ACTIVE' as const,
       };
 
       const res = await app.handle(

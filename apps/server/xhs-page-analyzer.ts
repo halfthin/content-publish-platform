@@ -15,10 +15,10 @@
  *   bun xhs-page-analyzer.ts --page note --noteId "xxx"
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { type Browser, type BrowserContext, chromium, type Page } from 'playwright';
-import { fileURLToPath } from 'url';
 import { XIAOHONGSHU_COOKIES } from '../../.workspace/config/xiaohongshu.cookies.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -69,6 +69,14 @@ interface AnalysisResult {
     maxDepth: number;
     interactiveElements: number;
   };
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function getErrorStack(error: unknown): string | undefined {
+  return error instanceof Error ? error.stack : undefined;
 }
 
 // ========== 参数解析 ==========
@@ -139,7 +147,7 @@ function printHelp() {
 
 // ========== DOM 捕获模块 ==========
 
-async function captureDOM(page: Page, config: AnalyzerConfig): Promise<ElementInfo | null> {
+async function captureDOM(page: Page, _config: AnalyzerConfig): Promise<ElementInfo | null> {
   console.log('🔍 捕获 DOM 结构...');
 
   return await page.evaluate(() => {
@@ -156,7 +164,7 @@ async function captureDOM(page: Page, config: AnalyzerConfig): Promise<ElementIn
           .split(/\s+/)
           .filter((c) => c && !c.startsWith('['));
         if (classes.length > 0) {
-          selector += '.' + classes.slice(0, 3).join('.');
+          selector += `.${classes.slice(0, 3).join('.')}`;
         }
       }
 
@@ -231,7 +239,9 @@ function analyzeStructure(domStructure: ElementInfo | null): AnalysisResult['sta
     totalElements++;
     if (element.depth > maxDepth) maxDepth = element.depth;
 
-    element.classes.forEach((c) => classes.add(c));
+    element.classes.forEach((c) => {
+      classes.add(c);
+    });
 
     if (['button', 'a', 'input', 'select'].includes(element.tagName)) {
       interactiveElements++;
@@ -452,7 +462,7 @@ async function main() {
   console.log(`页面类型：${config.pageType}`);
   console.log(`输出目录：${config.outputDir}`);
   console.log(`无头模式：${config.headless}`);
-  console.log('='.repeat(60) + '\n');
+  console.log(`${'='.repeat(60)}\n`);
 
   let browser: Browser | null = null;
   let context: BrowserContext | null = null;
@@ -568,7 +578,7 @@ async function main() {
     console.log(`  ✅ 选择器：${path.basename(selectorsPath)}`);
 
     // 打印摘要
-    console.log('\n' + '='.repeat(60));
+    console.log(`\n${'='.repeat(60)}`);
     console.log('📊 分析摘要');
     console.log('='.repeat(60));
     console.log(`元素总数：${statistics.totalElements}`);
@@ -579,9 +589,12 @@ async function main() {
     console.log('='.repeat(60));
 
     console.log('\n✅ 分析完成！\n');
-  } catch (error: any) {
-    console.error('\n❌ 分析失败:', error.message);
-    console.error(error.stack);
+  } catch (error: unknown) {
+    console.error('\n❌ 分析失败:', getErrorMessage(error));
+    const stack = getErrorStack(error);
+    if (stack) {
+      console.error(stack);
+    }
     process.exit(1);
   } finally {
     if (browser) await browser.close();

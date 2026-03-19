@@ -1,9 +1,15 @@
 import { Elysia, t } from 'elysia';
 import { createLogger } from '../config/logger';
 import { prisma } from '../config/prisma';
-import { publishQueue } from '../queues/publish-queue';
+import { addPublishJob, getPublishQueue } from '../queues/publish-queue';
 
 const logger = createLogger('publish-status-route');
+
+function isSupportedPublishPlatform(
+  platform: string
+): platform is 'xiaohongshu' | 'weibo' | 'douyin' | 'bilibili' | 'wechat' {
+  return ['xiaohongshu', 'weibo', 'douyin', 'bilibili', 'wechat'].includes(platform);
+}
 
 /**
  * 发布状态跟踪 API 路由
@@ -37,13 +43,14 @@ export function setupPublishStatusRoutes() {
             });
 
             // 获取队列中的任务状态
+            const logsWithJobId = publishLogs.filter(
+              (log): typeof log & { jobId: string } => typeof log.jobId === 'string'
+            );
             const jobStates = await Promise.all(
-              publishLogs
-                .filter((log) => log.jobId)
-                .map(async (log) => ({
-                  jobId: log.jobId,
-                  state: await publishQueue.getJobState(log.jobId!),
-                }))
+              logsWithJobId.map(async (log) => ({
+                jobId: log.jobId,
+                state: await getPublishQueue().getJobState(log.jobId),
+              }))
             );
 
             const stateMap = Object.fromEntries(jobStates.map((s) => [s.jobId, s.state]));
@@ -54,7 +61,7 @@ export function setupPublishStatusRoutes() {
                 contentId,
                 publishLogs: publishLogs.map((log) => ({
                   ...log,
-                  jobState: stateMap[log.jobId!],
+                  jobState: log.jobId ? stateMap[log.jobId] : null,
                 })),
               },
             };
@@ -230,12 +237,19 @@ export function setupPublishStatusRoutes() {
               };
             }
 
+            if (!isSupportedPublishPlatform(publishLog.platform)) {
+              return {
+                success: false,
+                error: 'Unsupported platform',
+              };
+            }
+
             // 创建新的发布任务
             const job = await addPublishJob(
               {
                 contentId: publishLog.contentId,
                 accountId: publishLog.accountId,
-                platform: publishLog.platform as any,
+                platform: publishLog.platform,
                 content: {
                   title: publishLog.content.title,
                   description: publishLog.content.description || '',
@@ -287,6 +301,3 @@ export function setupPublishStatusRoutes() {
       )
   );
 }
-
-// 需要导入 addPublishJob
-import { addPublishJob } from '../queues/publish-queue';

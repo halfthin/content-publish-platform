@@ -216,15 +216,26 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useRouter, useRoute } from 'vue-router';
-import { ElMessage } from 'element-plus';
 import { ArrowLeft, Picture } from '@element-plus/icons-vue';
-import { useContentStore } from '@/stores/content.store';
-import { getContentFileUrl } from '@/api/contents';
+import { ElMessage } from 'element-plus';
 import { marked } from 'marked';
-import ReviewHistory from '@/components/ReviewHistory.vue';
-import { getContentStatusLabel, getContentStatusType, getContentTypeLabel } from '@/utils/status-labels';
+import { computed, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { type ContentWithPreview, getContentFileUrl } from '@/api/contents';
+import { useContentStore } from '@/stores/content.store';
+import {
+  getContentStatusLabel,
+  getContentStatusType,
+  getContentTypeLabel,
+} from '@/utils/status-labels';
+
+type ReviewHistoryItem = {
+  action: 'created' | 'submitted' | 'approved' | 'rejected' | 'published';
+  timestamp: string;
+  reviewer: string;
+  note?: string;
+  status?: string;
+};
 
 const router = useRouter();
 const route = useRoute();
@@ -233,9 +244,9 @@ const store = useContentStore();
 // 模拟审核历史数据（实际应从 API 获取）
 const mockReviewHistory = computed(() => {
   if (!content.value) return [];
-  
-  const history: any[] = [];
-  
+
+  const history: ReviewHistoryItem[] = [];
+
   // 创建时间
   history.push({
     action: 'created' as const,
@@ -243,23 +254,23 @@ const mockReviewHistory = computed(() => {
     reviewer: '系统',
     status: content.value.status,
   });
-  
+
   // 审核时间
   if (content.value.reviewedAt) {
     history.push({
-      action: content.value.status === 'APPROVED' ? 'approved' : 'rejected' as const,
+      action: content.value.status === 'APPROVED' ? 'approved' : ('rejected' as const),
       timestamp: content.value.reviewedAt,
       reviewer: content.value.reviewedBy || '未知',
       note: content.value.reviewNote,
       status: content.value.status,
     });
   }
-  
+
   return history.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 });
 
 const content = computed(() => store.currentContent);
-const contentDetail = computed(() => store.currentContent as any);
+const contentDetail = computed<ContentWithPreview | null>(() => store.currentContent);
 
 // 图片预览列表
 const imagePreviewList = computed(() => {
@@ -348,7 +359,7 @@ async function loadData() {
 
   try {
     await store.fetchContentDetail(id);
-  } catch (error) {
+  } catch {
     ElMessage.error('加载内容详情失败');
   }
 }
@@ -397,7 +408,7 @@ async function confirmReview() {
 
     reviewDialogVisible.value = false;
     loadData();
-  } catch (error) {
+  } catch {
     ElMessage.error('操作失败');
   } finally {
     submitting.value = false;
@@ -418,7 +429,7 @@ async function handlePublish() {
   try {
     // TODO: 调用发布 API
     ElMessage.success('内容已加入发布队列');
-  } catch (error) {
+  } catch {
     ElMessage.error('发布失败');
   } finally {
     publishing.value = false;
@@ -428,6 +439,26 @@ async function handlePublish() {
 onMounted(() => {
   loadData();
 });
+
+void [
+  ArrowLeft,
+  Picture,
+  mockReviewHistory,
+  imagePreviewList,
+  mediaTableData,
+  renderedMarkdown,
+  getVideoUrl,
+  previewMedia,
+  getTypeLabel,
+  getStatusLabel,
+  getStatusTagType,
+  formatDate,
+  handleBack,
+  handleApprove,
+  handleReject,
+  confirmReview,
+  handlePublish,
+];
 </script>
 
 <style scoped>

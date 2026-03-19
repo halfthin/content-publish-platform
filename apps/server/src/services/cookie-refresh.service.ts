@@ -1,16 +1,28 @@
+import type { Account, PublishLog } from '@prisma/client';
+import { CronJob } from 'cron';
 import { createLogger } from '../config/logger';
 import { prisma } from '../config/prisma';
 import { XiaohongshuPublisher } from '../publishers/xiaohongshu';
-import { decryptCookies } from '../utils/encryption';
-import { CronJob } from 'cron';
 
 const logger = createLogger('cookie-refresh-service');
 
+type RefreshableAccount = Pick<
+  Account,
+  | 'id'
+  | 'name'
+  | 'encryptedCookies'
+  | 'cookieUpdatedAt'
+  | 'cookieRefreshAttempts'
+  | 'cookiePassword'
+> & {
+  publishLogs?: Pick<PublishLog, 'status' | 'createdAt'>[];
+};
+
 export interface CookieHealthMetrics {
-  ageScore: number;          // Cookie年龄 (0-30分)
-  usageScore: number;        // 使用频率 (0-30分)
-  successRateScore: number;  // 发布成功率 (0-40分)
-  totalScore: number;        // 总分 (0-100分)
+  ageScore: number; // Cookie年龄 (0-30分)
+  usageScore: number; // 使用频率 (0-30分)
+  successRateScore: number; // 发布成功率 (0-40分)
+  totalScore: number; // 总分 (0-100分)
   healthLevel: 'HEALTHY' | 'WARNING' | 'CRITICAL' | 'EXPIRED';
   warningMessage?: string;
 }
@@ -70,7 +82,7 @@ export class CookieRefreshService {
       this.cronJob.stop();
       this.cronJob = null;
     }
-    
+
     this.isRunning = false;
     logger.info('CookieRefreshService stopped');
   }
@@ -78,7 +90,7 @@ export class CookieRefreshService {
   /**
    * 检查所有小红书账号的Cookie健康度
    */
-  async checkAllXiaohongshuAccounts(): Promise<void> {
+  async checkAllXiaohongshuAccounts(): Promise<RefreshResult[]> {
     logger.info('Starting cookie health check for all xiaohongshu accounts');
 
     try {
@@ -104,13 +116,13 @@ export class CookieRefreshService {
       logger.info(`Found ${accounts.length} xiaohongshu accounts to check`);
 
       const results: RefreshResult[] = [];
-      
+
       // 分批处理，避免同时打开太多浏览器
       const batchSize = 3;
       for (let i = 0; i < accounts.length; i += batchSize) {
         const batch = accounts.slice(i, i + batchSize);
         const batchResults = await Promise.allSettled(
-          batch.map(account => this.checkAndRefreshAccount(account))
+          batch.map((account) => this.checkAndRefreshAccount(account))
         );
 
         batchResults.forEach((result, index) => {
@@ -134,8 +146,10 @@ export class CookieRefreshService {
       }
 
       // 统计结果
-      const successCount = results.filter(r => r.success).length;
-      const warningCount = results.filter(r => r.healthScore && r.healthScore < this.healthThreshold).length;
+      const successCount = results.filter((r) => r.success).length;
+      const warningCount = results.filter(
+        (r) => r.healthScore && r.healthScore < this.healthThreshold
+      ).length;
 
       logger.info('Cookie health check completed', {
         total: accounts.length,
@@ -146,16 +160,17 @@ export class CookieRefreshService {
 
       // 发送通知（后续实现）
       await this.sendNotifications(results);
-
+      return results;
     } catch (error) {
       logger.error('Failed to check all xiaohongshu accounts', { error: String(error) });
+      return [];
     }
   }
 
   /**
    * 检查并刷新单个账号的Cookie
    */
-  async checkAndRefreshAccount(account: any): Promise<RefreshResult> {
+  async checkAndRefreshAccount(account: RefreshableAccount): Promise<RefreshResult> {
     const result: RefreshResult = {
       accountId: account.id,
       accountName: account.name,
@@ -173,7 +188,8 @@ export class CookieRefreshService {
         data: {
           cookieHealthScore: healthMetrics.totalScore,
           lastCookieCheckAt: new Date(),
-          cookieExpiryWarning: healthMetrics.healthLevel === 'WARNING' || healthMetrics.healthLevel === 'CRITICAL',
+          cookieExpiryWarning:
+            healthMetrics.healthLevel === 'WARNING' || healthMetrics.healthLevel === 'CRITICAL',
         },
       });
 
@@ -206,7 +222,6 @@ export class CookieRefreshService {
       if (healthMetrics.warningMessage) {
         result.error = healthMetrics.warningMessage;
       }
-
     } catch (error) {
       logger.error('Failed to check and refresh account', {
         accountId: account.id,
@@ -221,7 +236,7 @@ export class CookieRefreshService {
   /**
    * 小红书专用Cookie健康度评估
    */
-  async evaluateXiaohongshuCookieHealth(account: any): Promise<CookieHealthMetrics> {
+  async evaluateXiaohongshuCookieHealth(account: RefreshableAccount): Promise<CookieHealthMetrics> {
     const metrics: CookieHealthMetrics = {
       ageScore: 30,
       usageScore: 30,
@@ -244,8 +259,10 @@ export class CookieRefreshService {
 
     // 1. Cookie年龄评估 (0-30分)
     if (account.cookieUpdatedAt) {
-      const ageInDays = Math.floor((Date.now() - new Date(account.cookieUpdatedAt).getTime()) / (1000 * 60 * 60 * 24));
-      
+      const ageInDays = Math.floor(
+        (Date.now() - new Date(account.cookieUpdatedAt).getTime()) / (1000 * 60 * 60 * 24)
+      );
+
       if (ageInDays <= 7) {
         metrics.ageScore = 30; // 7天内，满分
       } else if (ageInDays <= 14) {
@@ -260,7 +277,7 @@ export class CookieRefreshService {
       if (ageInDays > 21) {
         metrics.healthLevel = 'EXPIRED';
         metrics.warningMessage = `Cookie已过期${ageInDays - 21}天`;
-      } else if (ageInDays > 14) {
+      } else if (ageInDays > 21 - this.warningDays) {
         metrics.healthLevel = 'CRITICAL';
         metrics.warningMessage = `Cookie即将过期，剩余${21 - ageInDays}天`;
       } else if (ageInDays > 7) {
@@ -271,8 +288,8 @@ export class CookieRefreshService {
 
     // 2. 使用频率评估 (0-30分)
     const publishLogs = account.publishLogs || [];
-    const recentLogs = publishLogs.filter((log: any) => 
-      new Date(log.createdAt).getTime() > Date.now() - 7 * 24 * 60 * 60 * 1000
+    const recentLogs = publishLogs.filter(
+      (log) => new Date(log.createdAt).getTime() > Date.now() - 7 * 24 * 60 * 60 * 1000
     );
 
     if (recentLogs.length >= 5) {
@@ -286,7 +303,7 @@ export class CookieRefreshService {
     }
 
     // 3. 发布成功率评估 (0-40分)
-    const successLogs = recentLogs.filter((log: any) => log.status === 'SUCCESS');
+    const successLogs = recentLogs.filter((log) => log.status === 'SUCCESS');
     const successRate = recentLogs.length > 0 ? successLogs.length / recentLogs.length : 1;
 
     if (successRate >= 0.9) {
@@ -339,8 +356,14 @@ export class CookieRefreshService {
       }
 
       // 2. 检查刷新次数限制
-      if (account.cookieRefreshAttempts && account.cookieRefreshAttempts >= this.maxRefreshAttempts) {
-        logger.warn('Max refresh attempts reached', { accountId, attempts: account.cookieRefreshAttempts });
+      if (
+        account.cookieRefreshAttempts &&
+        account.cookieRefreshAttempts >= this.maxRefreshAttempts
+      ) {
+        logger.warn('Max refresh attempts reached', {
+          accountId,
+          attempts: account.cookieRefreshAttempts,
+        });
         return false;
       }
 
@@ -354,7 +377,8 @@ export class CookieRefreshService {
       await publisher.initialize();
 
       // 4. 加载现有Cookie
-      const password = account.cookiePassword || process.env.COOKIE_ENCRYPTION_KEY || 'default-password';
+      const password =
+        account.cookiePassword || process.env.COOKIE_ENCRYPTION_KEY || 'default-password';
       const loaded = await publisher.loadCookies(account.encryptedCookies, password);
 
       if (!loaded) {
@@ -364,10 +388,10 @@ export class CookieRefreshService {
 
       // 5. 检查登录状态
       const isLoggedIn = await publisher.checkLoginStatus();
-      
+
       if (!isLoggedIn) {
         logger.warn('Account not logged in, attempting to re-login', { accountId });
-        
+
         // 尝试重新登录（需要人工介入的场景）
         // 这里可以添加自动登录逻辑，但小红书通常需要验证码
         // 目前先返回false，标记需要人工介入
@@ -376,7 +400,7 @@ export class CookieRefreshService {
 
       // 6. 保存更新后的Cookie
       const newCookies = await publisher.saveCookies(password);
-      
+
       if (newCookies) {
         // 更新数据库
         await prisma.account.update({
@@ -394,7 +418,6 @@ export class CookieRefreshService {
       }
 
       return false;
-
     } catch (error) {
       logger.error('Failed to refresh xiaohongshu cookies', {
         accountId,
@@ -417,7 +440,7 @@ export class CookieRefreshService {
    */
   async manualCheck(): Promise<RefreshResult[]> {
     logger.info('Manual cookie health check triggered');
-    return this.checkAllXiaohongshuAccounts() as any;
+    return this.checkAllXiaohongshuAccounts();
   }
 
   /**
@@ -440,14 +463,14 @@ export class CookieRefreshService {
    */
   private async sendNotifications(results: RefreshResult[]): Promise<void> {
     // TODO: 实现WebSocket通知、邮件通知等
-    const criticalAccounts = results.filter(r => 
-      r.healthScore && r.healthScore < 50 && !r.success
+    const criticalAccounts = results.filter(
+      (r) => r.healthScore && r.healthScore < 50 && !r.success
     );
 
     if (criticalAccounts.length > 0) {
       logger.warn('Critical accounts need manual intervention', {
         count: criticalAccounts.length,
-        accounts: criticalAccounts.map(a => ({ id: a.accountId, name: a.accountName })),
+        accounts: criticalAccounts.map((a) => ({ id: a.accountId, name: a.accountName })),
       });
     }
   }
@@ -456,6 +479,6 @@ export class CookieRefreshService {
    * 工具函数：睡眠
    */
   private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

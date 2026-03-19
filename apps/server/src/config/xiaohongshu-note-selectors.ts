@@ -233,14 +233,28 @@ export const noteDetailSelectors: NoteDetailSelectors = {
   commentItem: ['[class*="comment-item"]', '.comment-item', '.comment', '[data-e2e="commentItem"]'],
 };
 
+type SelectorElement = {
+  textContent(): Promise<string | null>;
+  getAttribute(name: string): Promise<string | null>;
+  $(selector: string): Promise<SelectorElement | null>;
+};
+
+type SelectorPage = {
+  waitForSelector(
+    selector: string,
+    options: { state: 'visible'; timeout: number; strict?: boolean }
+  ): Promise<SelectorElement | null>;
+  $$(selector: string, options?: { timeout?: number }): Promise<SelectorElement[]>;
+};
+
 /**
  * 查找第一个匹配的元素
  */
 export async function findElement(
-  page: any,
+  page: SelectorPage,
   selectors: string[],
   options?: { timeout?: number; strict?: boolean }
-): Promise<any> {
+): Promise<SelectorElement | null> {
   const timeout = options?.timeout ?? 10000;
 
   for (const selector of selectors) {
@@ -254,7 +268,7 @@ export async function findElement(
       if (element) {
         return element;
       }
-    } catch (error) {}
+    } catch {}
   }
 
   return null;
@@ -264,10 +278,10 @@ export async function findElement(
  * 查找所有匹配的元素
  */
 export async function findElements(
-  page: any,
+  page: SelectorPage,
   selectors: string[],
   options?: { timeout?: number }
-): Promise<any[]> {
+): Promise<SelectorElement[]> {
   const timeout = options?.timeout ?? 10000;
 
   for (const selector of selectors) {
@@ -276,7 +290,7 @@ export async function findElements(
       if (elements && elements.length > 0) {
         return elements;
       }
-    } catch (error) {}
+    } catch {}
   }
 
   return [];
@@ -286,7 +300,7 @@ export async function findElements(
  * 提取元素文本
  */
 export async function getElementText(
-  page: any,
+  page: SelectorPage,
   selectors: string[],
   options?: { timeout?: number }
 ): Promise<string> {
@@ -303,7 +317,7 @@ export async function getElementText(
  * 提取元素属性
  */
 export async function getElementAttribute(
-  page: any,
+  page: SelectorPage,
   selectors: string[],
   attribute: string,
   options?: { timeout?: number }
@@ -321,7 +335,7 @@ export async function getElementAttribute(
  * 提取所有图片 URL
  */
 export async function extractImages(
-  page: any,
+  page: SelectorPage,
   selectors: NoteDetailSelectors = noteDetailSelectors
 ): Promise<string[]> {
   try {
@@ -362,7 +376,7 @@ export async function extractImages(
  * 提取笔记详情数据
  */
 export async function extractNoteDetail(
-  page: any,
+  page: SelectorPage,
   selectors: NoteDetailSelectors = noteDetailSelectors
 ): Promise<{
   title: string;

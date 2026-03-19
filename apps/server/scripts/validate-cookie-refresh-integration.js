@@ -5,8 +5,8 @@
  * 用于验证方案B的完整功能
  */
 
-import { CookieRefreshService } from './src/services/cookie-refresh.service';
 import { PrismaClient } from '@prisma/client';
+import { CookieRefreshService } from './src/services/cookie-refresh.service';
 import { encryptCookies } from './src/utils/encryption';
 
 const prisma = new PrismaClient();
@@ -17,7 +17,7 @@ async function main() {
   try {
     // 1. 创建测试数据
     console.log('1. 创建测试数据...');
-    
+
     // 创建测试分组
     const testGroup = await prisma.accountGroup.create({
       data: {
@@ -29,12 +29,13 @@ async function main() {
 
     // 创建3个测试账号，模拟不同健康状态
     const testAccounts = [];
-    
+
     // 账号1: 健康账号（1天前更新，有发布记录）
-    const healthyCookies = await encryptCookies([
-      { name: 'a1', value: 'healthy-cookie', domain: '.xiaohongshu.com' }
-    ], 'test-password');
-    
+    const healthyCookies = await encryptCookies(
+      [{ name: 'a1', value: 'healthy-cookie', domain: '.xiaohongshu.com' }],
+      'test-password'
+    );
+
     const healthyAccount = await prisma.account.create({
       data: {
         name: `healthy-account-${Date.now()}`,
@@ -69,10 +70,11 @@ async function main() {
     });
 
     // 账号2: 警告账号（10天前更新，发布成功率低）
-    const warningCookies = await encryptCookies([
-      { name: 'a1', value: 'warning-cookie', domain: '.xiaohongshu.com' }
-    ], 'test-password');
-    
+    const warningCookies = await encryptCookies(
+      [{ name: 'a1', value: 'warning-cookie', domain: '.xiaohongshu.com' }],
+      'test-password'
+    );
+
     const warningAccount = await prisma.account.create({
       data: {
         name: `warning-account-${Date.now()}`,
@@ -113,10 +115,11 @@ async function main() {
     });
 
     // 账号3: 严重账号（25天前更新，无发布记录）
-    const criticalCookies = await encryptCookies([
-      { name: 'a1', value: 'critical-cookie', domain: '.xiaohongshu.com' }
-    ], 'test-password');
-    
+    const criticalCookies = await encryptCookies(
+      [{ name: 'a1', value: 'critical-cookie', domain: '.xiaohongshu.com' }],
+      'test-password'
+    );
+
     const criticalAccount = await prisma.account.create({
       data: {
         name: `critical-account-${Date.now()}`,
@@ -140,11 +143,11 @@ async function main() {
     // 2. 初始化服务
     console.log('2. 初始化CookieRefreshService...');
     const service = new CookieRefreshService('*/10 * * * * *', 70, 3, 3); // 每10秒执行一次，用于测试
-    
+
     // 3. 测试手动检查
     console.log('3. 执行手动健康度检查...');
     const manualResults = await service.manualCheck();
-    
+
     console.log(`✅ 手动检查完成，处理了 ${manualResults.length} 个账号`);
     manualResults.forEach((result, index) => {
       const account = testAccounts[index];
@@ -160,7 +163,7 @@ async function main() {
     // 4. 测试手动刷新（针对严重账号）
     console.log('4. 测试手动刷新严重账号...');
     const refreshResult = await service.manualRefresh(criticalAccount.id);
-    
+
     console.log(`   账号: ${refreshResult.accountName}`);
     console.log(`   刷新结果: ${refreshResult.success ? '✅ 成功' : '❌ 失败'}`);
     console.log(`   刷新后健康度: ${refreshResult.healthScore}分`);
@@ -173,16 +176,16 @@ async function main() {
     console.log('5. 验证数据库更新...');
     const updatedAccounts = await prisma.account.findMany({
       where: {
-        id: { in: testAccounts.map(a => a.id) },
+        id: { in: testAccounts.map((a) => a.id) },
       },
     });
 
     let passedChecks = 0;
     const totalChecks = updatedAccounts.length * 3; // 每个账号检查3个字段
 
-    updatedAccounts.forEach(account => {
+    updatedAccounts.forEach((account) => {
       console.log(`   ${account.name}:`);
-      
+
       // 检查健康度分数
       if (account.cookieHealthScore !== null && account.cookieHealthScore !== undefined) {
         console.log(`     ✅ cookieHealthScore: ${account.cookieHealthScore}`);
@@ -215,10 +218,10 @@ async function main() {
     console.log('6. 测试服务启动和停止...');
     await service.start();
     console.log('   ✅ 服务启动成功');
-    
+
     // 等待一段时间让定时任务执行
-    await new Promise(resolve => setTimeout(resolve, 15000));
-    
+    await new Promise((resolve) => setTimeout(resolve, 15000));
+
     await service.stop();
     console.log('   ✅ 服务停止成功\n');
 
@@ -226,20 +229,20 @@ async function main() {
     console.log('7. 清理测试数据...');
     await prisma.publishLog.deleteMany({
       where: {
-        accountId: { in: testAccounts.map(a => a.id) },
+        accountId: { in: testAccounts.map((a) => a.id) },
       },
     });
-    
+
     await prisma.account.deleteMany({
       where: {
-        id: { in: testAccounts.map(a => a.id) },
+        id: { in: testAccounts.map((a) => a.id) },
       },
     });
-    
+
     await prisma.accountGroup.delete({
       where: { id: testGroup.id },
     });
-    
+
     console.log('✅ 测试数据清理完成\n');
 
     // 8. 总结
@@ -259,7 +262,6 @@ async function main() {
     console.log('2. 设置合适的健康度阈值和预警天数');
     console.log('3. 实现通知系统 (WebSocket/邮件)');
     console.log('4. 添加前端健康度显示界面');
-
   } catch (error) {
     console.error('❌ 集成验证失败:', error);
     process.exit(1);

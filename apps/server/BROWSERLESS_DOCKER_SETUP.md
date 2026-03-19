@@ -133,7 +133,7 @@ curl http://localhost:6666
 ```bash
 # 无需额外配置
 # 代码会自动使用本地浏览器
-bun test-search-scraper.mjs
+bun test
 ```
 
 ---

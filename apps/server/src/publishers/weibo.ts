@@ -1,7 +1,7 @@
 import type { BrowserContext, Page } from 'playwright';
 import { createLogger } from '../config/logger';
 import { browserPool } from '../config/playwright';
-import { clickElement, fillInput, findElement, weiboSelectors } from '../config/weibo-selectors';
+import { clickElement, findElement, weiboSelectors } from '../config/weibo-selectors';
 import type { PublishJob } from '../queues/publish-queue';
 import { decryptCookies, encryptCookies } from '../utils/encryption';
 

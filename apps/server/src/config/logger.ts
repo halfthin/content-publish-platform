@@ -1,9 +1,11 @@
+import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { configure, getLogger, jsonLinesFormatter } from '@logtape/logtape';
-import { appendFileSync, mkdirSync, existsSync } from 'fs';
-import { join } from 'path';
+
+type LogRecord = Parameters<typeof jsonLinesFormatter>[0];
 
 // 控制台日志 sink
-const consoleSink = (record: any) => {
+const consoleSink = (record: LogRecord) => {
   const formatted = jsonLinesFormatter(record);
   console.log(formatted);
 };
@@ -17,10 +19,10 @@ if (!existsSync(LOG_DIR)) {
   mkdirSync(LOG_DIR, { recursive: true });
 }
 
-const verifyFileSink = (record: any) => {
+const verifyFileSink = (record: LogRecord) => {
   const formatted = jsonLinesFormatter(record);
   try {
-    appendFileSync(VERIFY_LOG_FILE, formatted + '\n');
+    appendFileSync(VERIFY_LOG_FILE, `${formatted}\n`);
   } catch (err) {
     console.error('Failed to write verify log:', err);
   }

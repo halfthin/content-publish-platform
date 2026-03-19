@@ -30,6 +30,11 @@ export interface PublishJobResult {
   errorCode?: string;
 }
 
+export interface AddPublishJobOptions {
+  delay?: number;
+  jobId?: string;
+}
+
 // 类型别名，方便发布器使用
 export type PublishJob = Job<PublishJobData, PublishJobResult>;
 
@@ -85,10 +90,7 @@ export class PublishQueue {
    */
   async addJob(
     jobData: PublishJobData,
-    options?: {
-      delay?: number;
-      jobId?: string;
-    }
+    options?: AddPublishJobOptions
   ): Promise<Job<PublishJobData, PublishJobResult, string>> {
     const job = await this.queue.add(jobData.platform, jobData, {
       jobId: options?.jobId || `${jobData.contentId}-${jobData.accountId}`,
@@ -628,14 +630,15 @@ export class PublishQueue {
   }
 }
 
-// 导出单例
-export const publishQueue = PublishQueue.getInstance();
+export function getPublishQueue(): PublishQueue {
+  return PublishQueue.getInstance();
+}
 
 // 导出便捷函数
-export async function addPublishJob(jobData: PublishJobData, options?: any) {
-  return publishQueue.addJob(jobData, options);
+export async function addPublishJob(jobData: PublishJobData, options?: AddPublishJobOptions) {
+  return getPublishQueue().addJob(jobData, options);
 }
 
 export function startAllWorkers() {
-  publishQueue.startAllWorkers();
+  getPublishQueue().startAllWorkers();
 }

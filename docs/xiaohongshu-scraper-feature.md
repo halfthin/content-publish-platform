@@ -78,20 +78,24 @@ apps/server/src/
 │   └── xiaohongshu-note-selectors.ts     # 笔记详情页选择器
 ├── services/
 │   └── xiaohongshu-scraper.service.ts    # 采集服务核心逻辑
-└── test-xiaohongshu-scraper.mjs          # 测试脚本
+└── test/
+    └── xiaohongshu-cookie-save.test.ts   # 结构化测试示例
 ```
 
 ---
 
 ## 🔧 使用方法
 
-### 方式 1：使用测试脚本
+### 方式 1：运行服务端测试
 
 ```bash
 cd ~/dev/content-publish-platform/apps/server
 
-# 运行测试（显示浏览器，便于调试）
-bun test-xiaohongshu-scraper.mjs
+# 运行默认测试
+bun test
+
+# 需要数据库 / Redis 的集成测试
+RUN_INTEGRATION_TESTS=true bun test
 ```
 
 ### 方式 2：在代码中调用
@@ -195,18 +199,15 @@ interface NoteInfo {
 
 确保 Cookie 有效（已登录状态）。
 
-### 步骤 2：运行测试
+### 步骤 2：运行验证
 
 ```bash
-bun test-xiaohongshu-scraper.mjs
+bun test
 ```
 
 ### 步骤 3：查看结果
 
-测试结果会保存到：
-```
-.workspace/tests/scraper-test-result-{timestamp}.json
-```
+根据测试输出和运行日志确认采集流程是否正常。早期根目录下的临时 `test-*` 调试脚本已移除，当前以结构化测试和服务日志为准。
 
 ---
 
@@ -231,7 +232,7 @@ await page.waitForTimeout(Math.random() * 2000 + 1000);
 ### 3. 选择器维护
 
 - 小红书页面结构可能频繁更新
-- 定期运行验证脚本：`validate-selectors.ts`
+- 定期重新检查 `apps/server/src/config/` 中的选择器与线上页面结构
 - 发现采集失败时，首先检查选择器是否有效
 
 ### 4. 法律合规
@@ -344,7 +345,7 @@ if (!existingNotes.has(noteId)) {
 - [用户主页选择器](./src/config/xiaohongshu-user-selectors.ts)
 - [笔记详情页选择器](./src/config/xiaohongshu-note-selectors.ts)
 - [采集服务实现](./src/services/xiaohongshu-scraper.service.ts)
-- [测试脚本](./test-xiaohongshu-scraper.mjs)
+- [测试目录](../apps/server/test)
 
 ---
 

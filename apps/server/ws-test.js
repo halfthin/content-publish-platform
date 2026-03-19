@@ -15,7 +15,7 @@ ws.on('error', (error) => {
   process.exit(1);
 });
 
-ws.on('unexpected-response', (request, response) => {
+ws.on('unexpected-response', (_request, response) => {
   console.error('❌ 意外响应:', response.statusCode);
   let body = '';
   response.on('data', (chunk) => (body += chunk));

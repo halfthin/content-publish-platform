@@ -59,20 +59,26 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { useRoute } from 'vue-router';
-import { ElMessage } from 'element-plus';
 import {
-  HomeFilled,
-  Document,
-  User,
-  VideoPlay,
   Clock,
   DataLine,
+  Document,
+  HomeFilled,
   PieChart,
+  User,
+  VideoPlay,
 } from '@element-plus/icons-vue';
-import { wsService, type WebSocketMessage } from '@/websocket';
+import { ElMessage } from 'element-plus';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { useRoute } from 'vue-router';
 import { useContentStore } from '@/stores/content.store';
+import { type WebSocketMessage, wsService } from '@/websocket';
+
+declare global {
+  interface Window {
+    __wsCheckTimer?: ReturnType<typeof setInterval>;
+  }
+}
 
 const route = useRoute();
 const contentStore = useContentStore();
@@ -109,19 +115,21 @@ onMounted(() => {
   }, 1000);
 
   // 存储定时器 ID 以便清理
-  (window as any).__wsCheckTimer = checkConnection;
+  window.__wsCheckTimer = checkConnection;
 });
 
 onUnmounted(() => {
   // 清理定时器
-  if ((window as any).__wsCheckTimer) {
-    clearInterval((window as any).__wsCheckTimer);
+  if (window.__wsCheckTimer) {
+    clearInterval(window.__wsCheckTimer);
   }
 
   // 断开 WebSocket
   wsService.disconnect();
   wsService.offMessage(handleWebSocketMessage);
 });
+
+void [activeMenu, Clock, DataLine, Document, HomeFilled, PieChart, User, VideoPlay];
 </script>
 
 <style scoped>

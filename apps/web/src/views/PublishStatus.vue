@@ -139,15 +139,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import { ElMessage } from 'element-plus';
 import { Refresh } from '@element-plus/icons-vue';
-import axios from 'axios';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+import { ElMessage } from 'element-plus';
+import { onMounted, ref } from 'vue';
+import {
+  getAllPublishLogs,
+  getPublishStats,
+  type PublishLog,
+  type PublishStats,
+  retryPublish,
+} from '@/api/publish-status';
 
 // 统计数据
-const stats = ref({
+const stats = ref<PublishStats>({
   today: 0,
   thisWeek: 0,
   thisMonth: 0,
@@ -156,7 +160,7 @@ const stats = ref({
 });
 
 // 发布日志
-const publishLogs = ref<any[]>([]);
+const publishLogs = ref<PublishLog[]>([]);
 const loading = ref(false);
 const retryingIds = ref<string[]>([]);
 
@@ -239,10 +243,7 @@ function formatDate(dateStr: string): string {
 // 加载统计数据
 async function loadStats() {
   try {
-    const response = await axios.get(`${API_BASE}/publish-status/stats`);
-    if (response.data.success) {
-      stats.value = response.data.data;
-    }
+    stats.value = await getPublishStats();
   } catch (error) {
     console.error('Failed to load stats:', error);
   }
@@ -252,17 +253,12 @@ async function loadStats() {
 async function loadPublishLogs() {
   loading.value = true;
   try {
-    const response = await axios.get(`${API_BASE}/publish-status/account/all`, {
-      params: {
-        limit: pageSize.value,
-        offset: (currentPage.value - 1) * pageSize.value,
-      },
-    });
-
-    if (response.data.success) {
-      publishLogs.value = response.data.data.publishLogs;
-      total.value = response.data.data.pagination.total;
-    }
+    const response = await getAllPublishLogs(
+      pageSize.value,
+      (currentPage.value - 1) * pageSize.value
+    );
+    publishLogs.value = response.publishLogs;
+    total.value = response.pagination.total;
   } catch (error) {
     console.error('Failed to load publish logs:', error);
     ElMessage.error('加载发布日志失败');
@@ -278,24 +274,19 @@ function refreshData() {
 }
 
 // 重试发布
-async function handleRetry(log: any) {
+async function handleRetry(log: PublishLog) {
   if (retryingIds.value.includes(log.id)) return;
 
   try {
     retryingIds.value.push(log.id);
-    const response = await axios.post(`${API_BASE}/publish-status/${log.id}/retry`);
-    
-    if (response.data.success) {
-      ElMessage.success('已重新加入发布队列');
-      refreshData();
-    } else {
-      ElMessage.error(response.data.error || '重试失败');
-    }
+    await retryPublish(log.id);
+    ElMessage.success('已重新加入发布队列');
+    refreshData();
   } catch (error) {
     console.error('Failed to retry:', error);
     ElMessage.error('重试失败');
   } finally {
-    retryingIds.value = retryingIds.value.filter(id => id !== log.id);
+    retryingIds.value = retryingIds.value.filter((id) => id !== log.id);
   }
 }
 
@@ -315,6 +306,19 @@ onMounted(() => {
   loadStats();
   loadPublishLogs();
 });
+
+void [
+  Refresh,
+  getPlatformLabel,
+  getPlatformTagType,
+  getStatusLabel,
+  getStatusTagType,
+  getJobStateTagType,
+  formatDate,
+  handleRetry,
+  handlePageChange,
+  handleSizeChange,
+];
 </script>
 
 <style scoped>

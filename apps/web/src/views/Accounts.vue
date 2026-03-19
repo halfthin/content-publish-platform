@@ -13,8 +13,8 @@
         <el-option label="抖音" value="douyin" />
       </el-select>
       <el-select v-model="filterStatus" placeholder="状态筛选" clearable @change="loadAccounts">
-        <el-option label="已启用" value="active" />
-        <el-option label="已禁用" value="inactive" />
+        <el-option label="已启用" value="ACTIVE" />
+        <el-option label="已禁用" value="INACTIVE" />
       </el-select>
     </div>
 
@@ -31,8 +31,8 @@
       <el-table-column prop="username" label="用户名" width="150" />
       <el-table-column prop="status" label="状态" width="100">
         <template #default="{ row }">
-          <el-tag :type="row.status === 'active' ? 'success' : 'info'">
-            {{ row.status === 'active' ? '已启用' : '已禁用' }}
+          <el-tag :type="row.status === 'ACTIVE' ? 'success' : 'info'">
+            {{ row.status === 'ACTIVE' ? '已启用' : '已禁用' }}
           </el-tag>
         </template>
       </el-table-column>
@@ -52,7 +52,7 @@
         <template #default="{ row }">
           <el-button size="small" @click="editAccount(row)">编辑</el-button>
           <el-button size="small" @click="toggleStatus(row)">
-            {{ row.status === 'active' ? '禁用' : '启用' }}
+            {{ row.status === 'ACTIVE' ? '禁用' : '启用' }}
           </el-button>
           <el-button size="small" type="primary" @click="goToCookieConfig(row)">
             Cookie
@@ -103,19 +103,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import { ElMessage, ElMessageBox } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import { onMounted, reactive, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import {
-  getAccounts as getAccountsApi,
-  createAccount as createAccountApi,
-  updateAccount as updateAccountApi,
-  deleteAccount as deleteAccountApi,
-  toggleAccountStatus as toggleAccountStatusApi,
   type Account,
   type CreateAccountDto,
+  createAccount as createAccountApi,
+  deleteAccount as deleteAccountApi,
+  getAccounts as getAccountsApi,
+  toggleAccountStatus as toggleAccountStatusApi,
   type UpdateAccountDto,
+  updateAccount as updateAccountApi,
 } from '@/api/accounts';
 
 const router = useRouter();
@@ -141,6 +141,14 @@ const rules: FormRules = {
   name: [{ required: true, message: '请输入账号名称', trigger: 'blur' }],
   platform: [{ required: true, message: '请选择平台', trigger: 'change' }],
 };
+void rules;
+
+type LoginStatusTagType = 'success' | 'warning' | 'info';
+type PlatformTagType = 'primary' | 'success' | 'warning' | 'danger' | 'info';
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : '未知错误';
+}
 
 // 加载账号列表
 async function loadAccounts() {
@@ -151,9 +159,9 @@ async function loadAccounts() {
     if (filterStatus.value) params.status = filterStatus.value;
 
     const result = await getAccountsApi(params);
-    accounts.value = (result as any[]) || [];
-  } catch (error: any) {
-    ElMessage.error('加载账号列表失败：' + (error.message || '未知错误'));
+    accounts.value = Array.isArray(result) ? result : [];
+  } catch (error: unknown) {
+    ElMessage.error(`加载账号列表失败：${getErrorMessage(error)}`);
   } finally {
     loading.value = false;
   }
@@ -180,7 +188,7 @@ function editAccount(account: Account) {
 async function toggleStatus(account: Account) {
   try {
     await ElMessageBox.confirm(
-      `确定要${account.status === 'active' ? '禁用' : '启用'}账号"${account.name}"吗？`,
+      `确定要${account.status === 'ACTIVE' ? '禁用' : '启用'}账号"${account.name}"吗？`,
       '确认操作',
       { type: 'warning' }
     );
@@ -188,9 +196,9 @@ async function toggleStatus(account: Account) {
     await toggleAccountStatusApi(account.id);
     ElMessage.success('操作成功');
     await loadAccounts();
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error !== 'cancel') {
-      ElMessage.error('操作失败：' + (error.message || '未知错误'));
+      ElMessage.error(`操作失败：${getErrorMessage(error)}`);
     }
   }
 }
@@ -198,18 +206,16 @@ async function toggleStatus(account: Account) {
 // 删除账号
 async function deleteAccount(account: Account) {
   try {
-    await ElMessageBox.confirm(
-      `确定要删除账号"${account.name}"吗？此操作不可恢复！`,
-      '删除确认',
-      { type: 'error' }
-    );
+    await ElMessageBox.confirm(`确定要删除账号"${account.name}"吗？此操作不可恢复！`, '删除确认', {
+      type: 'error',
+    });
 
     await deleteAccountApi(account.id);
     ElMessage.success('删除成功');
     await loadAccounts();
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error !== 'cancel') {
-      ElMessage.error('删除失败：' + (error.message || '未知错误'));
+      ElMessage.error(`删除失败：${getErrorMessage(error)}`);
     }
   }
 }
@@ -244,8 +250,8 @@ async function submitForm() {
 
       dialogVisible.value = false;
       await loadAccounts();
-    } catch (error: any) {
-      ElMessage.error((isEdit.value ? '更新' : '创建') + '失败：' + (error.message || '未知错误'));
+    } catch (error: unknown) {
+      ElMessage.error(`${isEdit.value ? '更新' : '创建'}失败：${getErrorMessage(error)}`);
     } finally {
       submitting.value = false;
     }
@@ -272,8 +278,8 @@ function getPlatformName(platform: string): string {
   return map[platform] || platform;
 }
 
-function getPlatformTagType(platform: string): 'primary' | 'success' | 'warning' | 'danger' {
-  const map: Record<string, any> = {
+function getPlatformTagType(platform: string): PlatformTagType {
+  const map: Record<string, PlatformTagType> = {
     xiaohongshu: 'danger',
     weibo: 'warning',
     douyin: 'primary',
@@ -290,8 +296,8 @@ function getLoginStatusName(status: string): string {
   return map[status] || status;
 }
 
-function getLoginStatusTagType(status: string): 'success' | 'warning' | 'info' {
-  const map: Record<string, any> = {
+function getLoginStatusTagType(status: string): LoginStatusTagType {
+  const map: Record<string, LoginStatusTagType> = {
     LOGGED_IN: 'success',
     EXPIRED: 'warning',
     UNKNOWN: 'info',
@@ -309,6 +315,21 @@ function formatDate(date: string | Date): string {
     minute: '2-digit',
   });
 }
+
+void [
+  showAddDialog,
+  editAccount,
+  toggleStatus,
+  deleteAccount,
+  goToCookieConfig,
+  submitForm,
+  resetForm,
+  getPlatformName,
+  getPlatformTagType,
+  getLoginStatusName,
+  getLoginStatusTagType,
+  formatDate,
+];
 
 onMounted(() => {
   loadAccounts();

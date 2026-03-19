@@ -1,8 +1,6 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
-import type { Job } from 'bullmq';
+import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { prisma } from '../config/prisma';
 import { XiaohongshuPublisher } from '../publishers/xiaohongshu';
-import { PublishQueue } from './publish-queue';
 
 // Mock the XiaohongshuPublisher
 const mockXiaohongshuPublisher = {
@@ -24,8 +22,11 @@ mock.module('../publishers/xiaohongshu', () => ({
   XiaohongshuPublisher: mock(() => mockXiaohongshuPublisher),
 }));
 
+type MockPublisher = typeof mockXiaohongshuPublisher;
+type PublisherWithContext = XiaohongshuPublisher & { context: unknown };
+
 describe('Xiaohongshu publish queue cookie save', () => {
-  let mockPublisher: any;
+  let mockPublisher: MockPublisher;
 
   beforeEach(() => {
     // Reset mocks
@@ -50,11 +51,11 @@ describe('Xiaohongshu publish queue cookie save', () => {
     const findUniqueMock = mock(() => Promise.resolve(mockAccount));
     const updateMock = mock(() => Promise.resolve({}));
     const updateManyMock = mock(() => Promise.resolve({}));
-    
-    prisma.account.findUnique = findUniqueMock as any;
-    prisma.account.update = updateMock as any;
-    prisma.publishLog.updateMany = updateManyMock as any;
-    prisma.content.update = updateMock as any;
+
+    prisma.account.findUnique = findUniqueMock as typeof prisma.account.findUnique;
+    prisma.account.update = updateMock as typeof prisma.account.update;
+    prisma.publishLog.updateMany = updateManyMock as typeof prisma.publishLog.updateMany;
+    prisma.content.update = updateMock as typeof prisma.content.update;
 
     // Call the saveCookies method
     const encryptedCookies = await mockPublisher.saveCookies('test-password');
@@ -77,9 +78,9 @@ describe('Xiaohongshu publish queue cookie save', () => {
     // Mock prisma methods
     const findUniqueMock = mock(() => Promise.resolve(mockAccount));
     const updateMock = mock(() => Promise.resolve({}));
-    
-    prisma.account.findUnique = findUniqueMock as any;
-    prisma.account.update = updateMock as any;
+
+    prisma.account.findUnique = findUniqueMock as typeof prisma.account.findUnique;
+    prisma.account.update = updateMock as typeof prisma.account.update;
 
     try {
       await mockPublisher.saveCookies('test-password');
@@ -102,7 +103,7 @@ describe('Xiaohongshu publish queue cookie save', () => {
     });
 
     // Mock the context to be null
-    (publisher as any).context = null;
+    (publisher as PublisherWithContext).context = null;
 
     try {
       await publisher.saveCookies('test-password');
@@ -118,17 +119,17 @@ describe('Xiaohongshu publish queue cookie save', () => {
   test('should update account cookies in database', async () => {
     // Mock database update
     const updateSpy = mock(() => Promise.resolve({}));
-    prisma.account.update = updateSpy as any;
+    prisma.account.update = updateSpy as typeof prisma.account.update;
 
     // Verify the mock is set up
     expect(prisma.account.update).toBeDefined();
-    
+
     // Call update to verify it works
-    await prisma.account.update({ 
-      where: { id: 'test-id' }, 
-      data: { encryptedCookies: 'new-cookies' } 
+    await prisma.account.update({
+      where: { id: 'test-id' },
+      data: { encryptedCookies: 'new-cookies' },
     });
-    
+
     expect(updateSpy).toHaveBeenCalled();
   });
 });
