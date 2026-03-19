@@ -15,8 +15,22 @@ test-output/
 logs/
 *.log
 
+# 内容目录
+content/*
+!content/.gitkeep
+!content/inbox/
+content/inbox/*
+!content/inbox/.gitkeep
+!content/inbox/example/
+!content/inbox/example/**
+!content/approved/
+content/approved/*
+!content/approved/.gitkeep
+!content/published/
+content/published/*
+!content/published/.gitkeep
+
 # 截图
-content/test-images/
 *.png
 *.jpg
 

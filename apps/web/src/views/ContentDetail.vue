@@ -161,6 +161,25 @@
                 <el-option label="微信公众号" value="wechat" />
               </el-select>
             </el-form-item>
+            <el-form-item label="账号">
+              <el-select
+                v-model="publishForm.accountId"
+                placeholder="选择发布账号"
+                style="width: 100%"
+                :loading="accountsLoading"
+                clearable
+              >
+                <el-option
+                  v-for="account in availableAccounts"
+                  :key="account.id"
+                  :label="`${account.name}${account.username ? ` (${account.username})` : ''}`"
+                  :value="account.id"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item v-if="publishForm.platform && availableAccounts.length === 0">
+              <el-alert title="当前平台没有可用账号，请先在账号管理中配置 Cookie 并保持账号启用。" type="warning" :closable="false" />
+            </el-form-item>
             <el-form-item>
               <el-button type="primary" style="width: 100%" @click="handlePublish" :loading="publishing">
                 发布内容
@@ -219,8 +238,9 @@
 import { ArrowLeft, Picture } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { marked } from 'marked';
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { type Account, getAccounts } from '@/api/accounts';
 import { type ContentWithPreview, getContentFileUrl } from '@/api/contents';
 import { useContentStore } from '@/stores/content.store';
 import {
@@ -306,8 +326,16 @@ const submitting = ref(false);
 // 发布表单
 const publishForm = ref({
   platform: '',
+  accountId: '',
 });
 const publishing = ref(false);
+const accountsLoading = ref(false);
+const accounts = ref<Account[]>([]);
+const availableAccounts = computed(() =>
+  accounts.value.filter(
+    (account) => account.platform === publishForm.value.platform && account.status === 'ACTIVE'
+  )
+);
 
 // 获取图片 URL
 function getImageUrl(imgPath: string): string {
@@ -364,6 +392,19 @@ async function loadData() {
   }
 }
 
+async function loadAccounts() {
+  accountsLoading.value = true;
+
+  try {
+    const result = await getAccounts();
+    accounts.value = Array.isArray(result) ? result : [];
+  } catch {
+    ElMessage.error('加载账号列表失败');
+  } finally {
+    accountsLoading.value = false;
+  }
+}
+
 // 审核通过
 function handleApprove() {
   reviewAction.value = 'approve';
@@ -407,7 +448,7 @@ async function confirmReview() {
     }
 
     reviewDialogVisible.value = false;
-    loadData();
+    await loadData();
   } catch {
     ElMessage.error('操作失败');
   } finally {
@@ -424,11 +465,22 @@ async function handlePublish() {
     return;
   }
 
+  if (!publishForm.value.accountId) {
+    ElMessage.warning('请选择发布账号');
+    return;
+  }
+
   publishing.value = true;
 
   try {
-    // TODO: 调用发布 API
+    await store.publishContentAction(
+      content.value.id,
+      publishForm.value.platform,
+      publishForm.value.accountId
+    );
     ElMessage.success('内容已加入发布队列');
+    await loadData();
+    router.push('/publish-status');
   } catch {
     ElMessage.error('发布失败');
   } finally {
@@ -437,8 +489,16 @@ async function handlePublish() {
 }
 
 onMounted(() => {
-  loadData();
+  void loadData();
+  void loadAccounts();
 });
+
+watch(
+  () => publishForm.value.platform,
+  () => {
+    publishForm.value.accountId = '';
+  }
+);
 
 void [
   ArrowLeft,
@@ -447,6 +507,7 @@ void [
   imagePreviewList,
   mediaTableData,
   renderedMarkdown,
+  availableAccounts,
   getVideoUrl,
   previewMedia,
   getTypeLabel,

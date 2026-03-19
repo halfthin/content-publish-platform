@@ -432,12 +432,10 @@ export function setupContentsRoutes() {
           try {
             await moveToPublished(id, platform);
 
-            // 更新内容状态
-            const content = await require('../config/prisma').prisma.content.update({
+            const content = await prisma.content.update({
               where: { id },
               data: {
                 status: 'PUBLISHED',
-                publishCount: { increment: 1 },
               },
             });
 

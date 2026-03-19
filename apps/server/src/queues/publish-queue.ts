@@ -5,6 +5,7 @@ import { prisma } from '../config/prisma';
 import { DouyinPublisher } from '../publishers/douyin';
 import { WeiboPublisher } from '../publishers/weibo';
 import { XiaohongshuPublisher } from '../publishers/xiaohongshu';
+import { moveToPublished } from '../services/content.service';
 
 const logger = createLogger('publish-queue');
 
@@ -203,6 +204,62 @@ export class PublishQueue {
     }
   }
 
+  private async markPublishSuccess(
+    contentId: string,
+    accountId: string,
+    platform: string,
+    publishedUrl?: string
+  ): Promise<void> {
+    await prisma.publishLog.updateMany({
+      where: {
+        contentId,
+        accountId,
+      },
+      data: {
+        status: 'SUCCESS',
+        publishedUrl,
+        completedAt: new Date(),
+      },
+    });
+
+    await moveToPublished(contentId, platform);
+
+    await prisma.content.update({
+      where: { id: contentId },
+      data: {
+        status: 'PUBLISHED',
+        publishCount: { increment: 1 },
+      },
+    });
+  }
+
+  private async markPublishFailure(
+    contentId: string,
+    accountId: string,
+    errorMessage?: string,
+    errorCode?: string
+  ): Promise<void> {
+    await prisma.publishLog.updateMany({
+      where: {
+        contentId,
+        accountId,
+      },
+      data: {
+        status: 'FAILED',
+        errorMessage,
+        errorCode,
+        completedAt: new Date(),
+      },
+    });
+
+    await prisma.content.update({
+      where: { id: contentId },
+      data: {
+        status: 'FAILED',
+      },
+    });
+  }
+
   /**
    * 处理小红书任务
    */
@@ -270,39 +327,20 @@ export class PublishQueue {
       // 5. 执行发布
       const result = await publisher.publish(job.data);
 
-      // 6. 更新发布日志
       if (result.success) {
-        await prisma.publishLog.updateMany({
-          where: {
-            contentId: job.data.contentId,
-            accountId: job.data.accountId,
-          },
-          data: {
-            status: 'SUCCESS',
-            publishedUrl: result.publishedUrl,
-            publishedAt: new Date(),
-          },
-        });
-
-        // 更新内容状态
-        await prisma.content.update({
-          where: { id: job.data.contentId },
-          data: {
-            status: 'PUBLISHED',
-            publishCount: { increment: 1 },
-          },
-        });
+        await this.markPublishSuccess(
+          job.data.contentId,
+          job.data.accountId,
+          job.data.platform,
+          result.publishedUrl
+        );
       } else {
-        await prisma.publishLog.updateMany({
-          where: {
-            contentId: job.data.contentId,
-            accountId: job.data.accountId,
-          },
-          data: {
-            status: 'FAILED',
-            errorMessage: result.error,
-          },
-        });
+        await this.markPublishFailure(
+          job.data.contentId,
+          job.data.accountId,
+          result.error,
+          result.errorCode
+        );
       }
 
       return result;
@@ -312,17 +350,12 @@ export class PublishQueue {
         error: String(error),
       });
 
-      // 更新发布日志
-      await prisma.publishLog.updateMany({
-        where: {
-          contentId: job.data.contentId,
-          accountId: job.data.accountId,
-        },
-        data: {
-          status: 'FAILED',
-          errorMessage: String(error),
-        },
-      });
+      await this.markPublishFailure(
+        job.data.contentId,
+        job.data.accountId,
+        String(error),
+        'PROCESSING_FAILED'
+      );
 
       return {
         success: false,
@@ -419,12 +452,35 @@ export class PublishQueue {
       // 4. 执行发布
       const result = await publisher.publish(job.data);
 
+      if (result.success) {
+        await this.markPublishSuccess(
+          job.data.contentId,
+          job.data.accountId,
+          job.data.platform,
+          result.publishedUrl
+        );
+      } else {
+        await this.markPublishFailure(
+          job.data.contentId,
+          job.data.accountId,
+          result.error,
+          result.errorCode
+        );
+      }
+
       return result;
     } catch (error) {
       logger.error('Weibo job failed', {
         jobId: job.id,
         error: String(error),
       });
+
+      await this.markPublishFailure(
+        job.data.contentId,
+        job.data.accountId,
+        String(error),
+        'PROCESSING_FAILED'
+      );
 
       return {
         success: false,
@@ -520,12 +576,35 @@ export class PublishQueue {
       // 4. 执行发布
       const result = await publisher.publish(job.data);
 
+      if (result.success) {
+        await this.markPublishSuccess(
+          job.data.contentId,
+          job.data.accountId,
+          job.data.platform,
+          result.publishedUrl
+        );
+      } else {
+        await this.markPublishFailure(
+          job.data.contentId,
+          job.data.accountId,
+          result.error,
+          result.errorCode
+        );
+      }
+
       return result;
     } catch (error) {
       logger.error('Douyin job failed', {
         jobId: job.id,
         error: String(error),
       });
+
+      await this.markPublishFailure(
+        job.data.contentId,
+        job.data.accountId,
+        String(error),
+        'PROCESSING_FAILED'
+      );
 
       return {
         success: false,

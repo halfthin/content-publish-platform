@@ -142,6 +142,29 @@ export const useContentStore = defineStore('content', () => {
     }
   }
 
+  async function publishContentAction(id: string, platform: string, accountId?: string) {
+    try {
+      const result = await contentApi.publishContent(id, platform, accountId);
+
+      const index = contents.value.findIndex((content) => content.id === id);
+      if (index !== -1) {
+        contents.value[index] = {
+          ...contents.value[index],
+          status: 'PUBLISHING',
+        };
+      }
+
+      if (currentContent.value?.id === id) {
+        currentContent.value.status = 'PUBLISHING';
+      }
+
+      return result;
+    } catch (err: unknown) {
+      error.value = err instanceof Error ? err.message : '发布失败';
+      throw err;
+    }
+  }
+
   function clearCurrentContent() {
     currentContent.value = null;
   }
@@ -180,6 +203,7 @@ export const useContentStore = defineStore('content', () => {
     approveContentAction,
     rejectContentAction,
     scanInboxAction,
+    publishContentAction,
     clearCurrentContent,
     setPage,
     setLimit,
