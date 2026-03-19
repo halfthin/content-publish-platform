@@ -469,12 +469,19 @@ export function setupAccountsRoutes() {
               }));
               await context.addCookies(normalizedCookies);
 
-              // 验证 cookie 是否成功注入
+              // P2: 验证 cookie 是否成功注入 - 升到 info 级别并记录到 verifyLogger
               const injectedCookies = await context.cookies();
-              logger.debug({ 
-                count: injectedCookies.length, 
-                domains: injectedCookies.map(c => c.domain) 
-              }, 'Cookies injected');
+              const cookieLog = {
+                accountId: id,
+                stage: 'cookie_injection',
+                inputCount: normalizedCookies.length,
+                inputDomains: normalizedCookies.map((c: any) => c.domain),
+                injectedCount: injectedCookies.length,
+                injectedDomains: injectedCookies.map(c => c.domain),
+                success: injectedCookies.length > 0,
+              };
+              logger.info(cookieLog, 'Cookies injected');
+              verifyLogger.info(cookieLog, 'Cookie injection completed');
 
               const page = await context.newPage();
 
@@ -519,12 +526,21 @@ export function setupAccountsRoutes() {
 
                 if (apiResult.ok) {
                   isLoggedIn = true;
-                  verifyMethod = 'api';
+                  verifyMethod = 'api-success';
                   verifyDetails = { apiStatus: apiResult.status, method: 'api' };
                   logger.info('Cookie verified via API', { accountId: id, status: apiResult.status });
+                } else if (apiResult.status === 401) {
+                  verifyMethod = 'api-unauthorized';
+                  verifyDetails = { apiStatus: apiResult.status, method: 'api' };
+                  logger.info('API returned 401, will fallback to DOM', { accountId: id });
+                } else {
+                  verifyMethod = 'api-error';
+                  verifyDetails = { apiStatus: apiResult.status, method: 'api' };
+                  logger.info('API error, will fallback to DOM', { accountId: id, status: apiResult.status });
                 }
               } catch (apiError) {
-                logger.debug('API verification failed, falling back to DOM', { accountId: id, error: String(apiError) });
+                verifyMethod = 'api-exception';
+                logger.info('API verification exception, falling back to DOM', { accountId: id, error: String(apiError) });
               }
 
               // API 失败时 fallback 到页面 DOM 检测
@@ -548,7 +564,16 @@ export function setupAccountsRoutes() {
                 });
 
                 isLoggedIn = verifyDetails.hasAvatar && !verifyDetails.hasLoginButton;
-                verifyMethod = isLoggedIn ? 'dom' : 'failed';
+                // P3: 细化失败状态，可判责
+                if (isLoggedIn) {
+                  verifyMethod = 'dom';
+                } else if (verifyDetails.hasLoginButton) {
+                  verifyMethod = 'dom-login-page-detected';
+                } else if (!verifyDetails.hasAvatar) {
+                  verifyMethod = 'dom-no-avatar-detected';
+                } else {
+                  verifyMethod = 'dom-failed';
+                }
               }
 
               await context.close();
