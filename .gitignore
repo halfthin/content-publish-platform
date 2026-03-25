@@ -9,6 +9,7 @@ docs-workspace/
 debug-*.html
 card-*.html
 search-page-*.html
+docs/superpowers/
 
 # 测试输出
 test-output/
