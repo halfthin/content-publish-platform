@@ -373,6 +373,7 @@ export function setupContentsRoutes() {
                   images: content.images || [],
                   video: content.video || undefined,
                   tags: content.tags || [],
+                  basePath: content.basePath, // 添加: 传递 basePath
                 },
               },
               {

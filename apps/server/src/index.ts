@@ -7,10 +7,10 @@ import { getPublishQueue, startAllWorkers } from './queues/publish-queue';
 import { setupRoutes } from './routes';
 import { startFileWatcher, stopFileWatcher } from './services/file-watcher.service';
 
-// Load environment variables from project root .env file
-config({ path: '../../.env' });
+// Load environment variables from apps/server/.env
+config({ path: '.env', override: true });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 50000;
 
 const app = new Elysia();
 

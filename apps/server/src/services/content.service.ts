@@ -1,11 +1,15 @@
 import { promises as fs } from 'node:fs';
-import { basename, dirname, join, relative } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Content, ContentStatus } from '@prisma/client';
 import { createLogger } from '../config/logger';
 import { prisma } from '../config/prisma';
 
 const logger = createLogger('content-service');
 const IGNORED_INBOX_DIRECTORIES = new Set(['example']);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const PROJECT_ROOT = resolve(__dirname, '../../../..');
 
 interface ContentMetadata {
   title?: string;
@@ -43,7 +47,10 @@ export interface ContentWithPreview extends Omit<Content, 'images'> {
   mdContent?: string;
 }
 
-const CONTENT_BASE_DIR = process.env.CONTENT_DIR || './content';
+const DEFAULT_CONTENT_DIR = join(PROJECT_ROOT, 'content');
+const CONTENT_BASE_DIR = process.env.CONTENT_DIR
+  ? resolve(PROJECT_ROOT, process.env.CONTENT_DIR)
+  : DEFAULT_CONTENT_DIR;
 
 /**
  * 获取内容列表（分页 + 过滤）

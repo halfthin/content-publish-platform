@@ -4,6 +4,7 @@ import { logger } from '../config/logger';
 import { setupAccountsRoutes } from './accounts';
 import { setupContentsRoutes } from './contents';
 import { setupPublishStatusRoutes } from './publish-status';
+import { setupWebhookRoutes } from './webhook';
 
 export function setupRoutes() {
   return (
@@ -11,6 +12,8 @@ export function setupRoutes() {
       .use(
         cors({
           origin: [
+            'http://localhost:50010',
+            'http://127.0.0.1:50010',
             'http://localhost:5173',
             'http://localhost:5174',
             'http://127.0.0.1:5173',
@@ -36,6 +39,8 @@ export function setupRoutes() {
       .use(setupAccountsRoutes())
       // 发布状态跟踪 API
       .use(setupPublishStatusRoutes())
+      // Webhook 回调
+      .use(setupWebhookRoutes())
       .onRequest(({ path, method }) => {
         // 过滤高频噪音路径
         if (path === '/ws' || path.startsWith('/ws/')) {

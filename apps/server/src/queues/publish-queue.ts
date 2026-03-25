@@ -1,11 +1,14 @@
+import { randomUUID } from 'node:crypto';
 import { type Job, Queue, Worker } from 'bullmq';
 import { createClient } from 'ioredis';
+import { gatewayConfig, validateGatewayConfig } from '../config/gateway';
 import { createLogger } from '../config/logger';
 import { prisma } from '../config/prisma';
 import { DouyinPublisher } from '../publishers/douyin';
 import { WeiboPublisher } from '../publishers/weibo';
 import { XiaohongshuPublisher } from '../publishers/xiaohongshu';
 import { moveToPublished } from '../services/content.service';
+import { getGatewayService } from '../services/gateway.service';
 
 const logger = createLogger('publish-queue');
 
@@ -19,9 +22,11 @@ export interface PublishJobData {
     images?: string[];
     video?: string;
     tags?: string[];
+    basePath?: string; // 添加: 内容目录绝对路径 (APPROVED 目录)
   };
   scheduledAt?: number;
   retryCount?: number;
+  taskId?: string; // 添加: Gateway 任务ID
 }
 
 export interface PublishJobResult {
@@ -93,8 +98,11 @@ export class PublishQueue {
     jobData: PublishJobData,
     options?: AddPublishJobOptions
   ): Promise<Job<PublishJobData, PublishJobResult, string>> {
+    // 生成 taskId 用于 Gateway 追踪
+    const taskId = jobData.taskId || randomUUID();
+
     const job = await this.queue.add(jobData.platform, jobData, {
-      jobId: options?.jobId || `${jobData.contentId}-${jobData.accountId}`,
+      jobId: options?.jobId || `${jobData.contentId}-${jobData.accountId}-${taskId}`,
       delay: options?.delay || 0,
     });
 
@@ -103,6 +111,7 @@ export class PublishQueue {
       platform: jobData.platform,
       contentId: jobData.contentId,
       accountId: jobData.accountId,
+      taskId,
     });
 
     return job;
@@ -161,24 +170,28 @@ export class PublishQueue {
    * 启动所有平台 Worker
    */
   startAllWorkers(): void {
-    // 小红书 Worker
-    this.startWorker('xiaohongshu', async (job) => {
-      return this.processXiaohongshuJob(job);
-    });
+    // 初始化 Gateway 配置
+    validateGatewayConfig();
 
-    // 微博 Worker
-    this.startWorker('weibo', async (job) => {
-      return this.processWeiboJob(job);
-    });
-
-    // 抖音 Worker
-    this.startWorker('douyin', async (job) => {
-      return this.processDouyinJob(job);
-    });
-
-    // 其他平台 Worker（待实现）
-    // this.startWorker('bilibili', ...);
-    // this.startWorker('wechat', ...);
+    if (gatewayConfig.isGatewayMode) {
+      // Gateway 模式: 所有平台共用一个 worker，调用 Gateway
+      this.startWorker('gateway', async (job) => {
+        return this.processGatewayJob(job);
+      });
+      logger.info('All platform workers will use Gateway mode');
+    } else {
+      // 本地模式: 各平台独立 worker
+      this.startWorker('xiaohongshu', async (job) => {
+        return this.processXiaohongshuJob(job);
+      });
+      this.startWorker('weibo', async (job) => {
+        return this.processWeiboJob(job);
+      });
+      this.startWorker('douyin', async (job) => {
+        return this.processDouyinJob(job);
+      });
+      logger.info('Workers started in local Playwright mode');
+    }
   }
 
   /**
@@ -642,6 +655,77 @@ export class PublishQueue {
       // 关闭浏览器
       await publisher.close();
     }
+  }
+
+  /**
+   * 处理 Gateway 模式发布
+   */
+  private async processGatewayJob(
+    job: Job<PublishJobData, PublishJobResult>
+  ): Promise<PublishJobResult> {
+    const { contentId, accountId, platform, content } = job.data;
+
+    logger.info('Processing Gateway publish', {
+      jobId: job.id,
+      contentId,
+      accountId,
+      platform,
+    });
+
+    // 验证 basePath 存在
+    if (!content.basePath) {
+      return {
+        success: false,
+        error: 'Content basePath not found, content may not be approved',
+        errorCode: 'NO_CONTENT_PATH',
+      };
+    }
+
+    const gatewayService = getGatewayService();
+
+    // 调用 Gateway
+    const result = await gatewayService.publish({
+      platform,
+      contentId,
+      accountId,
+      contentPath: content.basePath,
+      taskId: job.data.taskId,
+    });
+
+    if (!result.success) {
+      logger.error('Gateway publish call failed', {
+        contentId,
+        error: result.error,
+      });
+
+      // 标记为失败
+      await this.markPublishFailure(contentId, accountId, result.error, 'GATEWAY_ERROR');
+
+      return {
+        success: false,
+        error: result.error,
+        errorCode: 'GATEWAY_ERROR',
+      };
+    }
+
+    // Gateway 接受任务，任务将通过 webhook 回调通知结果
+    // 更新 PublishLog 状态为 RUNNING
+    await prisma.publishLog.updateMany({
+      where: { contentId, accountId },
+      data: { status: 'RUNNING' },
+    });
+
+    logger.info('Gateway publish task accepted', {
+      contentId,
+      taskId: result.taskId,
+    });
+
+    // 注意: 实际结果通过 webhook 回调更新
+    // 这里返回成功，让 job 完成
+    return {
+      success: true,
+      // 不设置 publishedUrl，实际结果通过回调获取
+    };
   }
 
   /**

@@ -1,4 +1,7 @@
+import axios from 'axios';
 import apiClient from './client';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
 
 export interface Content {
   id: string;
@@ -57,27 +60,56 @@ export interface ApiResponse<T = unknown> {
   error?: string;
 }
 
+interface RawContentListResponse {
+  success: boolean;
+  data: Content[];
+  pagination: ContentPagination;
+  error?: string;
+}
+
+interface RawContentDetailResponse {
+  success: boolean;
+  data: ContentWithPreview;
+  error?: string;
+}
+
 /**
  * 获取内容列表
  */
 export async function getContents(params: ContentListParams = {}): Promise<ContentListResponse> {
-  const response = await apiClient.get('/contents', { params });
-  return response as unknown as ContentListResponse;
+  const response = await axios.get<RawContentListResponse>(`${API_BASE_URL}/contents`, {
+    params,
+  });
+
+  if (!response.data.success) {
+    throw new Error(response.data.error || '加载内容列表失败');
+  }
+
+  return {
+    data: response.data.data,
+    pagination: response.data.pagination,
+  };
 }
 
 /**
  * 获取内容详情
  */
 export async function getContentById(id: string): Promise<ContentDetailResponse> {
-  const response = await apiClient.get(`/contents/${id}`);
-  return response as unknown as ContentDetailResponse;
+  const response = await axios.get<RawContentDetailResponse>(`${API_BASE_URL}/contents/${id}`);
+
+  if (!response.data.success) {
+    throw new Error(response.data.error || '加载内容详情失败');
+  }
+
+  return {
+    data: response.data.data,
+  };
 }
 
 /**
  * 获取内容文件 URL
  */
 export function getContentFileUrl(contentId: string, filepath: string): string {
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
   return `${API_BASE_URL}/contents/${contentId}/files/${encodeURIComponent(filepath)}`;
 }
 

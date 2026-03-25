@@ -270,6 +270,10 @@ function formatDate(dateStr: string): string {
   });
 }
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : '未知错误';
+}
+
 // 加载数据
 async function loadData() {
   try {
@@ -280,8 +284,8 @@ async function loadData() {
       type: filterForm.type || undefined,
       search: filterForm.search || undefined,
     });
-  } catch {
-    ElMessage.error('加载内容列表失败');
+  } catch (error: unknown) {
+    ElMessage.error(`加载内容列表失败：${getErrorMessage(error)}`);
   }
 }
 
@@ -319,8 +323,8 @@ async function handleScanInbox() {
   try {
     await store.scanInboxAction();
     ElMessage.success('收件箱扫描完成');
-  } catch {
-    ElMessage.error('扫描收件箱失败');
+  } catch (error: unknown) {
+    ElMessage.error(`扫描收件箱失败：${getErrorMessage(error)}`);
   }
 }
 

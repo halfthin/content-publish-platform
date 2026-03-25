@@ -27,7 +27,7 @@
               <el-carousel-item v-for="(img, index) in content.images" :key="index">
                 <div class="carousel-item">
                   <el-image
-                    :src="getImageUrl(img)"
+                    :src="imagePreviewList[index]"
                     fit="contain"
                     :preview-src-list="imagePreviewList"
                     :initial-index="index"
@@ -85,6 +85,9 @@
             <el-descriptions-item label="标题">{{ content?.title || '-' }}</el-descriptions-item>
             <el-descriptions-item label="类型">
               <el-tag>{{ getTypeLabel(content?.type || 'IMAGE') }}</el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="描述">
+              <span class="description-text">{{ content?.description || '-' }}</span>
             </el-descriptions-item>
             <el-descriptions-item label="分类">{{ content?.category || '-' }}</el-descriptions-item>
             <el-descriptions-item label="标签">
@@ -294,8 +297,7 @@ const contentDetail = computed<ContentWithPreview | null>(() => store.currentCon
 
 // 图片预览列表
 const imagePreviewList = computed(() => {
-  if (!content.value?.images) return [];
-  return content.value.images.map((img: string) => getImageUrl(img));
+  return contentDetail.value?.previewUrls || [];
 });
 
 // 媒体表格数据
@@ -304,7 +306,7 @@ const mediaTableData = computed(() => {
   return content.value.images.map((img: string, index: number) => ({
     name: img.split('/').pop() || `image-${index + 1}`,
     type: '图片',
-    url: getImageUrl(img),
+    url: imagePreviewList.value[index] || '',
   }));
 });
 
@@ -336,12 +338,6 @@ const availableAccounts = computed(() =>
     (account) => account.platform === publishForm.value.platform && account.status === 'ACTIVE'
   )
 );
-
-// 获取图片 URL
-function getImageUrl(imgPath: string): string {
-  if (!content.value) return '';
-  return getContentFileUrl(content.value.id, imgPath);
-}
 
 // 获取视频 URL
 function getVideoUrl(videoPath: string): string {
@@ -525,6 +521,11 @@ void [
 <style scoped>
 .content-detail-page {
   padding: 20px;
+}
+
+.description-text {
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .back-bar {

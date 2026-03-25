@@ -1,11 +1,17 @@
 import { promises as fs, watch } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createLogger } from '../config/logger';
 import { scanInbox } from './content.service';
 
 const logger = createLogger('file-watcher');
-
-const CONTENT_BASE_DIR = process.env.CONTENT_DIR || './content';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const PROJECT_ROOT = resolve(__dirname, '../../../..');
+const DEFAULT_CONTENT_DIR = join(PROJECT_ROOT, 'content');
+const CONTENT_BASE_DIR = process.env.CONTENT_DIR
+  ? resolve(PROJECT_ROOT, process.env.CONTENT_DIR)
+  : DEFAULT_CONTENT_DIR;
 const INBOX_DIR = join(CONTENT_BASE_DIR, 'inbox');
 
 let watcher: ReturnType<typeof watch> | null = null;
