@@ -18,6 +18,8 @@ export function setupRoutes() {
             'http://localhost:5174',
             'http://127.0.0.1:5173',
             'http://127.0.0.1:5174',
+            'http://localhost:50001',
+            'http://127.0.0.1:50001',
           ],
           credentials: true,
           methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],

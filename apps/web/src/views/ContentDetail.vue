@@ -1,6 +1,6 @@
 <template>
   <div class="content-detail-page">
-    <!-- 返回按钮 -->
+    <!-- 返回按钮 - 固定在顶部 -->
     <div class="back-bar">
       <el-button @click="handleBack">
         <el-icon><ArrowLeft /></el-icon>
@@ -13,37 +13,35 @@
       </div>
     </div>
 
-    <el-row :gutter="20" v-loading="store.loading">
+    <!-- 内容区域 - 分别滚动 -->
+    <div v-loading="store.loading" class="content-row">
       <!-- 左侧：媒体预览 -->
-      <el-col :span="14">
-        <el-card class="media-card">
-          <template #header>
-            <span>📸 媒体预览</span>
-          </template>
-
-          <!-- 图片轮播 -->
-          <div v-if="content?.images && content.images.length > 0" class="image-carousel">
-            <el-carousel :autoplay="false" arrow="always" height="400px">
-              <el-carousel-item v-for="(img, index) in content.images" :key="index">
-                <div class="carousel-item">
-                  <el-image
-                    :src="imagePreviewList[index]"
-                    fit="contain"
-                    :preview-src-list="imagePreviewList"
-                    :initial-index="index"
-                    class="carousel-image"
-                  >
-                    <template #placeholder>
-                      <div class="image-placeholder">
-                        <el-icon><Picture /></el-icon>
-                        <span>加载中...</span>
-                      </div>
-                    </template>
-                  </el-image>
-                  <div class="image-index">{{ index + 1 }} / {{ content.images.length }}</div>
-                </div>
-              </el-carousel-item>
-            </el-carousel>
+      <div class="media-col">
+        <div class="media-wrapper">
+          <!-- 图片预览 - 缩略图网格 -->
+          <div v-if="content?.images && content.images.length > 0" class="image-thumbnail-grid">
+            <div
+              v-for="(img, index) in content.images"
+              :key="index"
+              class="thumbnail-item"
+              @click="openImageViewer(index)"
+            >
+              <el-image
+                :src="imagePreviewList[index]"
+                fit="cover"
+                class="thumbnail-image"
+                :preview-teleported="true"
+              >
+                <template #placeholder>
+                  <div class="image-placeholder">
+                    <el-icon class="is-loading"><Loading /></el-icon>
+                  </div>
+                </template>
+              </el-image>
+              <div class="thumbnail-overlay">
+                <el-icon><ZoomIn /></el-icon>
+              </div>
+            </div>
           </div>
 
           <!-- 视频预览 -->
@@ -56,161 +54,145 @@
             <el-empty description="暂无媒体文件" />
           </div>
 
-          <!-- 媒体文件列表 -->
-          <div class="media-list" v-if="content?.images && content.images.length > 0">
-            <h4>媒体文件列表</h4>
-            <el-table :data="mediaTableData" style="width: 100%" size="small">
-              <el-table-column prop="name" label="文件名" />
-              <el-table-column prop="type" label="类型" width="80" />
-              <el-table-column label="操作" width="100">
-                <template #default="{ row }">
-                  <el-button link type="primary" @click="previewMedia(row.url)">
-                    预览
-                  </el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-          </div>
-        </el-card>
-      </el-col>
+          <!-- 图片查看器 -->
+          <el-image-viewer
+            v-if="showImageViewer && content?.images && content.images.length > 0"
+            :url-list="imagePreviewList"
+            :initial-index="currentImageIndex"
+            @close="showImageViewer = false"
+            teleported
+          />
+        </div>
+      </div>
 
       <!-- 右侧：内容信息 -->
-      <el-col :span="10">
-        <!-- 基本信息 -->
-        <el-card class="info-card">
-          <template #header>
-            <span>📝 基本信息</span>
-          </template>
-          <el-descriptions :column="1" border>
-            <el-descriptions-item label="标题">{{ content?.title || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="类型">
-              <el-tag>{{ getTypeLabel(content?.type || 'IMAGE') }}</el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="描述">
-              <span class="description-text">{{ content?.description || '-' }}</span>
-            </el-descriptions-item>
-            <el-descriptions-item label="分类">{{ content?.category || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="标签">
-              <div v-if="content?.tags && content.tags.length > 0" class="tags-list">
-                <el-tag v-for="tag in content.tags" :key="tag" size="small" style="margin-right: 6px">
-                  {{ tag }}
+      <div class="info-col">
+        <div class="info-wrapper">
+          <!-- 基本信息 -->
+          <el-card class="info-card">
+            <template #header>
+              <span>📝 基本信息</span>
+            </template>
+            <el-descriptions :column="1" border size="small">
+              <el-descriptions-item label="标题">{{ content?.title || '-' }}</el-descriptions-item>
+              <el-descriptions-item label="类型">
+                <el-tag size="small">{{ getTypeLabel(content?.type || 'IMAGE') }}</el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item label="描述">
+                <span class="description-text">{{ content?.description || '-' }}</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="分类">{{ content?.category || '-' }}</el-descriptions-item>
+              <el-descriptions-item label="标签">
+                <div v-if="content?.tags && content.tags.length > 0" class="tags-list">
+                  <el-tag v-for="tag in content.tags" :key="tag" size="small" style="margin-right: 4px; margin-bottom: 4px">
+                    {{ tag }}
+                  </el-tag>
+                </div>
+                <span v-else>-</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="创建时间">
+                {{ formatDate(content?.createdAt) }}
+              </el-descriptions-item>
+            </el-descriptions>
+          </el-card>
+
+          <!-- 审核信息 -->
+          <el-card class="info-card" style="margin-top: 12px">
+            <template #header>
+              <span>✅ 审核信息</span>
+            </template>
+            <el-descriptions :column="1" border size="small">
+              <el-descriptions-item label="审核状态">
+                <el-tag :type="getStatusTagType(content?.status || 'PENDING')" size="small">
+                  {{ getStatusLabel(content?.status || 'PENDING') }}
                 </el-tag>
-              </div>
-              <span v-else>-</span>
-            </el-descriptions-item>
-            <el-descriptions-item label="发布次数">{{ content?.publishCount || 0 }}</el-descriptions-item>
-            <el-descriptions-item label="创建时间">
-              {{ formatDate(content?.createdAt) }}
-            </el-descriptions-item>
-            <el-descriptions-item label="更新时间">
-              {{ formatDate(content?.updatedAt) }}
-            </el-descriptions-item>
-          </el-descriptions>
-        </el-card>
+              </el-descriptions-item>
+              <el-descriptions-item label="审核人">
+                {{ content?.reviewedBy || '-' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="审核时间">
+                {{ content?.reviewedAt ? formatDate(content.reviewedAt) : '-' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="审核备注">
+                {{ content?.reviewNote || '-' }}
+              </el-descriptions-item>
+            </el-descriptions>
 
-        <!-- 审核信息 -->
-        <el-card class="info-card" style="margin-top: 20px">
-          <template #header>
-            <span>✅ 审核信息</span>
-          </template>
-          <el-descriptions :column="1" border>
-            <el-descriptions-item label="审核状态">
-              <el-tag :type="getStatusTagType(content?.status || 'PENDING')">
-                {{ getStatusLabel(content?.status || 'PENDING') }}
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="审核人">
-              {{ content?.reviewedBy || '-' }}
-            </el-descriptions-item>
-            <el-descriptions-item label="审核时间">
-              {{ content?.reviewedAt ? formatDate(content.reviewedAt) : '-' }}
-            </el-descriptions-item>
-            <el-descriptions-item label="审核备注">
-              {{ content?.reviewNote || '-' }}
-            </el-descriptions-item>
-          </el-descriptions>
-
-          <!-- 审核操作 -->
-          <div class="review-actions" v-if="content?.status === 'PENDING'">
-            <el-button type="success" style="width: 100%" @click="handleApprove">
-              审核通过
-            </el-button>
-            <el-button type="danger" style="width: 100%; margin-top: 10px" @click="handleReject">
-              审核拒绝
-            </el-button>
-          </div>
-        </el-card>
-
-        <!-- 审核历史 -->
-        <el-card class="info-card" style="margin-top: 20px">
-          <template #header>
-            <span>📜 审核历史</span>
-          </template>
-          <ReviewHistory :history="mockReviewHistory" />
-        </el-card>
-
-        <!-- 发布操作 -->
-        <el-card class="info-card" style="margin-top: 20px" v-if="content?.status === 'APPROVED'">
-          <template #header>
-            <span>🚀 发布操作</span>
-          </template>
-          <el-form :model="publishForm" label-width="80px">
-            <el-form-item label="平台">
-              <el-select v-model="publishForm.platform" placeholder="选择发布平台" style="width: 100%">
-                <el-option label="小红书" value="xiaohongshu" />
-                <el-option label="微博" value="weibo" />
-                <el-option label="抖音" value="douyin" />
-                <el-option label="B 站" value="bilibili" />
-                <el-option label="微信公众号" value="wechat" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="账号">
-              <el-select
-                v-model="publishForm.accountId"
-                placeholder="选择发布账号"
-                style="width: 100%"
-                :loading="accountsLoading"
-                clearable
-              >
-                <el-option
-                  v-for="account in availableAccounts"
-                  :key="account.id"
-                  :label="`${account.name}${account.username ? ` (${account.username})` : ''}`"
-                  :value="account.id"
-                />
-              </el-select>
-            </el-form-item>
-            <el-form-item v-if="publishForm.platform && availableAccounts.length === 0">
-              <el-alert title="当前平台没有可用账号，请先在账号管理中配置 Cookie 并保持账号启用。" type="warning" :closable="false" />
-            </el-form-item>
-            <el-form-item>
-              <el-button type="primary" style="width: 100%" @click="handlePublish" :loading="publishing">
-                发布内容
+            <!-- 审核操作 -->
+            <div class="review-actions" v-if="content?.status === 'PENDING'">
+              <el-button type="success" style="width: 100%" size="small" @click="handleApprove">
+                审核通过
               </el-button>
-            </el-form-item>
-          </el-form>
-        </el-card>
-      </el-col>
-    </el-row>
+              <el-button type="danger" style="width: 100%; margin-top: 8px" size="small" @click="handleReject">
+                审核拒绝
+              </el-button>
+            </div>
+          </el-card>
 
-    <!-- Markdown 文案 -->
-    <el-card class="markdown-card" style="margin-top: 20px">
-      <template #header>
-        <span>📄 Markdown 文案</span>
-      </template>
-      <div class="markdown-content" v-if="contentDetail?.mdContent">
-        <div class="markdown-body" v-html="renderedMarkdown"></div>
+          <!-- 发布操作 -->
+          <el-card class="info-card" style="margin-top: 12px" v-if="content?.status === 'APPROVED'">
+            <template #header>
+              <span>🚀 发布操作</span>
+            </template>
+            <el-form :model="publishForm" label-width="60px" size="small">
+              <el-form-item label="平台">
+                <el-select v-model="publishForm.platform" placeholder="选择平台" style="width: 100%">
+                  <el-option label="小红书" value="xiaohongshu" />
+                  <el-option label="微博" value="weibo" />
+                  <el-option label="抖音" value="douyin" />
+                  <el-option label="B 站" value="bilibili" />
+                  <el-option label="微信公众号" value="wechat" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="账号">
+                <el-select
+                  v-model="publishForm.accountId"
+                  placeholder="选择账号"
+                  style="width: 100%"
+                  :loading="accountsLoading"
+                  clearable
+                >
+                  <el-option
+                    v-for="account in availableAccounts"
+                    :key="account.id"
+                    :label="`${account.name}${account.username ? ` (${account.username})` : ''}`"
+                    :value="account.id"
+                  />
+                </el-select>
+              </el-form-item>
+              <el-form-item v-if="publishForm.platform && availableAccounts.length === 0">
+                <el-alert title="当前平台没有可用账号" type="warning" :closable="false" />
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" style="width: 100%" @click="handlePublish" :loading="publishing">
+                  发布内容
+                </el-button>
+              </el-form-item>
+            </el-form>
+          </el-card>
+
+          <!-- Markdown 文案 -->
+          <el-card class="info-card markdown-card" style="margin-top: 12px">
+            <template #header>
+              <span>📄 Markdown 文案</span>
+            </template>
+            <div class="markdown-content" v-if="contentDetail?.mdContent">
+              <div class="markdown-body" v-html="renderedMarkdown"></div>
+            </div>
+            <el-empty v-else description="暂无文案内容" :image-size="60" />
+          </el-card>
+        </div>
       </div>
-      <el-empty v-else description="暂无文案内容" />
-    </el-card>
+    </div>
+  </div>
 
     <!-- 审核对话框 -->
     <el-dialog
       v-model="reviewDialogVisible"
       :title="reviewAction === 'approve' ? '审核通过' : '审核拒绝'"
-      width="500px"
+      width="400px"
     >
-      <el-form :model="reviewForm" label-width="80px">
+      <el-form :model="reviewForm" label-width="70px">
         <el-form-item label="审核人">
           <el-input v-model="reviewForm.reviewedBy" placeholder="请输入审核人" />
         </el-form-item>
@@ -218,7 +200,7 @@
           <el-input
             v-model="reviewForm.note"
             type="textarea"
-            :rows="4"
+            :rows="3"
             placeholder="请输入审核备注（可选）"
           />
         </el-form-item>
@@ -234,11 +216,10 @@
         </el-button>
       </template>
     </el-dialog>
-  </div>
 </template>
 
 <script setup lang="ts">
-import { ArrowLeft, Picture } from '@element-plus/icons-vue';
+import { ArrowLeft, Loading, Picture, ZoomIn } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { marked } from 'marked';
 import { computed, onMounted, ref, watch } from 'vue';
@@ -252,45 +233,21 @@ import {
   getContentTypeLabel,
 } from '@/utils/status-labels';
 
-type ReviewHistoryItem = {
-  action: 'created' | 'submitted' | 'approved' | 'rejected' | 'published';
-  timestamp: string;
-  reviewer: string;
-  note?: string;
-  status?: string;
-};
-
 const router = useRouter();
 const route = useRoute();
 const store = useContentStore();
 
-// 模拟审核历史数据（实际应从 API 获取）
-const mockReviewHistory = computed(() => {
-  if (!content.value) return [];
+// 当前显示的图片索引
+const currentImageIndex = ref(0);
 
-  const history: ReviewHistoryItem[] = [];
+// 图片查看器显示状态
+const showImageViewer = ref(false);
 
-  // 创建时间
-  history.push({
-    action: 'created' as const,
-    timestamp: content.value.createdAt,
-    reviewer: '系统',
-    status: content.value.status,
-  });
-
-  // 审核时间
-  if (content.value.reviewedAt) {
-    history.push({
-      action: content.value.status === 'APPROVED' ? 'approved' : ('rejected' as const),
-      timestamp: content.value.reviewedAt,
-      reviewer: content.value.reviewedBy || '未知',
-      note: content.value.reviewNote,
-      status: content.value.status,
-    });
-  }
-
-  return history.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-});
+// 打开图片查看器
+function openImageViewer(index: number) {
+  currentImageIndex.value = index;
+  showImageViewer.value = true;
+}
 
 const content = computed(() => store.currentContent);
 const contentDetail = computed<ContentWithPreview | null>(() => store.currentContent);
@@ -300,14 +257,9 @@ const imagePreviewList = computed(() => {
   return contentDetail.value?.previewUrls || [];
 });
 
-// 媒体表格数据
-const mediaTableData = computed(() => {
-  if (!content.value?.images) return [];
-  return content.value.images.map((img: string, index: number) => ({
-    name: img.split('/').pop() || `image-${index + 1}`,
-    type: '图片',
-    url: imagePreviewList.value[index] || '',
-  }));
+// 重置图片索引当内容变化时
+watch(() => content.value?.id, () => {
+  currentImageIndex.value = 0;
 });
 
 // 渲染 Markdown
@@ -343,11 +295,6 @@ const availableAccounts = computed(() =>
 function getVideoUrl(videoPath: string): string {
   if (!content.value) return '';
   return getContentFileUrl(content.value.id, videoPath);
-}
-
-// 预览媒体
-function previewMedia(url: string) {
-  window.open(url, '_blank');
 }
 
 // 使用共享工具函数
@@ -498,14 +445,14 @@ watch(
 
 void [
   ArrowLeft,
+  Loading,
   Picture,
-  mockReviewHistory,
+  ZoomIn,
+  showImageViewer,
   imagePreviewList,
-  mediaTableData,
   renderedMarkdown,
   availableAccounts,
   getVideoUrl,
-  previewMedia,
   getTypeLabel,
   getStatusLabel,
   getStatusTagType,
@@ -520,60 +467,104 @@ void [
 
 <style scoped>
 .content-detail-page {
-  padding: 20px;
-}
-
-.description-text {
-  white-space: pre-wrap;
-  word-break: break-word;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
 }
 
 .back-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  padding: 12px 16px;
+  flex-shrink: 0;
+  background: #f5f7fa;
 }
 
 .status-badge {
   margin-left: auto;
 }
 
-.media-card,
-.info-card,
-.markdown-card {
-  border-radius: 4px;
-}
-
-.image-carousel {
-  margin-bottom: 20px;
-}
-
-.carousel-item {
-  position: relative;
-  height: 100%;
+.content-row {
+  flex: 1;
+  min-height: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #f5f7fa;
+  gap: 16px;
+  align-items: stretch;
 }
 
-.carousel-image {
-  max-width: 100%;
-  max-height: 100%;
+/* 左右分栏 - 都被拉伸到同一高度 */
+.media-col {
+  flex: 0 0 62%;
+  min-height: 0;
+  border-radius: 8px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
 }
 
-.image-index {
-  position: absolute;
-  bottom: 10px;
-  right: 10px;
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 12px;
+.info-col {
+  flex: 0 0 38%;
+  min-height: 0;
+  border-radius: 8px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
 }
 
+/* 左侧媒体包装器 */
+.media-wrapper {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.media-wrapper::-webkit-scrollbar {
+  width: 6px;
+}
+
+.media-wrapper::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+}
+
+.media-wrapper::-webkit-scrollbar-thumb:hover {
+  background: #ccc;
+}
+
+.media-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 右侧信息包装器 */
+.info-wrapper {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding: 12px;
+}
+
+.info-wrapper::-webkit-scrollbar {
+  width: 6px;
+}
+
+.info-wrapper::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+}
+
+.info-wrapper::-webkit-scrollbar-thumb:hover {
+  background: #ccc;
+}
+
+.info-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 图片预览区域 */
 .image-placeholder {
   display: flex;
   flex-direction: column;
@@ -588,32 +579,94 @@ void [
   margin-bottom: 10px;
 }
 
+/* 缩略图网格 */
+.image-thumbnail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  padding: 16px;
+  align-content: start;
+}
+
+.thumbnail-item {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  background: #f5f7fa;
+  border: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.thumbnail-item:hover {
+  border-color: #409eff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.thumbnail-image {
+  width: 100%;
+  height: 100%;
+}
+
+.thumbnail-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+  color: #fff;
+  font-size: 24px;
+}
+
+.thumbnail-item:hover .thumbnail-overlay {
+  opacity: 1;
+}
+
+/* 视频预览 */
 .video-preview {
   background: #000;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.video-player {
-  width: 100%;
-  max-height: 400px;
-}
-
-.no-media {
-  height: 400px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.media-list {
-  margin-top: 20px;
+.video-player {
+  max-width: 100%;
+  max-height: 100%;
 }
 
-.media-list h4 {
-  margin: 0 0 10px 0;
+/* 无媒体 */
+.no-media {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+/* 右侧信息面板 */
+.info-card {
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.info-card :deep(.el-card__header) {
+  padding: 12px 16px;
   font-size: 14px;
-  color: #303133;
+}
+
+.info-card :deep(.el-descriptions__label) {
+  width: 80px;
+}
+
+.description-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
 }
 
 .tags-list {
@@ -622,18 +675,24 @@ void [
 }
 
 .review-actions {
-  margin-top: 20px;
+  margin-top: 16px;
+}
+
+/* Markdown */
+.markdown-card {
+  margin-bottom: 16px;
 }
 
 .markdown-content {
-  max-height: 600px;
+  max-height: 300px;
   overflow-y: auto;
 }
 
 .markdown-body {
-  padding: 20px;
+  padding: 12px;
   background: #f5f7fa;
   border-radius: 4px;
+  font-size: 13px;
 }
 
 .markdown-body :deep(h1),
@@ -645,7 +704,7 @@ void [
 .markdown-body :deep(pre) {
   background: #282c34;
   color: #abb2bf;
-  padding: 16px;
+  padding: 12px;
   border-radius: 4px;
   overflow-x: auto;
 }

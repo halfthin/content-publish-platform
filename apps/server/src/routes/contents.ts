@@ -109,9 +109,19 @@ export function setupContentsRoutes() {
 
       // 获取内容文件（图片/视频预览）
       .get(
-        '/:id/files/*filepath',
-        async ({ params, set }) => {
-          const { id, filepath } = params;
+        '/:id/files/*',
+        async ({ params, set, request }) => {
+          const id = params.id as string;
+          // 从请求路径提取通配符部分：/api/contents/:id/files/* -> *
+          const url = new URL(request.url);
+          const pathParts = url.pathname.split('/').filter(Boolean);
+          // pathParts: ['api', 'contents', ':id', 'files', ...rest]
+          const filesIndex = pathParts.indexOf('files');
+          const rawFilepath = filesIndex >= 0 ? pathParts.slice(filesIndex + 1).join('/') : '';
+          // 解码 URL 编码的路径（如 %2F -> /）
+          const filepath = decodeURIComponent(rawFilepath);
+
+          logger.debug({ id, filepath, params, urlPath: url.pathname }, 'File request params');
 
           // 验证内容是否存在
           const content = await getContentById(id);
@@ -142,7 +152,21 @@ export function setupContentsRoutes() {
           const resolvedPath = await fs.realpath(filePath).catch(() => null);
           const resolvedBase = await fs.realpath(content.basePath).catch(() => content.basePath);
 
-          if (!resolvedPath || !resolvedPath.startsWith(resolvedBase)) {
+          logger.debug({ filePath, resolvedPath, resolvedBase, safeFilepath, basePath: content.basePath }, 'File path validation');
+
+          // 检查文件是否存在
+          if (!resolvedPath) {
+            logger.warn({ filePath }, 'File not found');
+            set.status = 404;
+            return {
+              success: false,
+              error: 'File not found',
+            };
+          }
+
+          // 检查路径遍历
+          if (!resolvedPath.startsWith(resolvedBase)) {
+            logger.warn({ resolvedPath, resolvedBase }, 'Path traversal detected');
             set.status = 403;
             return {
               success: false,
@@ -180,9 +204,10 @@ export function setupContentsRoutes() {
           }
         },
         {
+          // ElysiaJS 自动注入 '*' 参数用于通配符路由
           params: t.Object({
             id: t.String(),
-            filepath: t.String(),
+            '*': t.Any(),
           }),
         }
       )
@@ -381,13 +406,7 @@ export function setupContentsRoutes() {
               }
             );
 
-            // 5. 更新发布日志
-            await prisma.publishLog.update({
-              where: { id: publishLog.id },
-              data: { jobId: job.id },
-            });
-
-            // 6. 更新内容状态
+            // 5. 更新内容状态
             await prisma.content.update({
               where: { id },
               data: { status: 'PUBLISHING' },

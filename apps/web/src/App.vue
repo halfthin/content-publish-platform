@@ -132,11 +132,22 @@ onUnmounted(() => {
 void [activeMenu, Clock, DataLine, Document, HomeFilled, PieChart, User, VideoPlay];
 </script>
 
-<style scoped>
-#app {
-  min-height: 100vh;
+<style>
+/* 全局重置 - 让 #app 填满视口 */
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
+#app {
+  height: 100vh;
+  overflow: hidden;
+}
+</style>
+
+<style scoped>
 .el-header {
   background-color: #1D4ED8;
   color: white;
@@ -144,6 +155,7 @@ void [activeMenu, Clock, DataLine, Document, HomeFilled, PieChart, User, VideoPl
   align-items: center;
   justify-content: space-between;
   height: 60px;
+  flex-shrink: 0;
 }
 
 .header-left h1 {
@@ -159,8 +171,9 @@ void [activeMenu, Clock, DataLine, Document, HomeFilled, PieChart, User, VideoPl
 
 .el-aside {
   background-color: #1f2937;
-  min-height: calc(100vh - 60px);
+  height: calc(100vh - 60px);
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .el-menu {
@@ -168,9 +181,10 @@ void [activeMenu, Clock, DataLine, Document, HomeFilled, PieChart, User, VideoPl
 }
 
 .el-main {
-  padding: 20px;
+  padding: 16px;
   background-color: #f5f7fa;
-  min-height: calc(100vh - 60px);
+  height: calc(100vh - 60px);
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 </style>

@@ -119,9 +119,11 @@ export async function getContentById(id: string): Promise<ContentWithPreview | n
     return null;
   }
 
-  // 生成图片预览 URL
+  // 生成图片预览 URL - 使用相对于 basePath 的路径
   const previewUrls = content.images.map((img) => {
-    const relativePath = relative(CONTENT_BASE_DIR, img);
+    let relativePath = relative(content.basePath, img);
+    // 清理 relative 返回的开头的 ./ 或 .\
+    relativePath = relativePath.replace(/^[.\\\/]+/, '');
     return `/api/contents/${content.id}/files/${encodeURIComponent(relativePath)}`;
   });
 

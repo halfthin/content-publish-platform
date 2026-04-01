@@ -99,7 +99,8 @@ class GatewayService {
     });
 
     try {
-      const response = await fetch(`${this.baseUrl}/webhooks/cpp/${params.platform}/${action}`, {
+      const gatewayPlatform = this.mapPlatformToGateway(params.platform);
+      const response = await fetch(`${this.baseUrl}/webhooks/cpp/${gatewayPlatform}/${action}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
