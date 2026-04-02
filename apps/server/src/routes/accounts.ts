@@ -3,6 +3,7 @@ import { Elysia, t } from 'elysia';
 import { chromium } from 'playwright';
 import { createLogger, verifyLogger } from '../config/logger';
 import { prisma } from '../config/prisma';
+import { getGatewayService } from '../services/gateway.service';
 import {
   normalizeCookiesForBrowser,
   normalizeCookiesForStorage,
@@ -470,7 +471,82 @@ export function setupAccountsRoutes() {
         }
       )
 
-      // 验证 Cookie
+      // 检查登录状态（通过 Gateway）
+      // 小红书使用 xiaohongshu-mcp，其他平台使用本地 Playwright
+      .post(
+        '/:id/cookies/check-login',
+        async ({ params }) => {
+          const { id } = params;
+
+          try {
+            // 获取账号
+            const account = await prisma.account.findUnique({
+              where: { id },
+            });
+
+            if (!account) {
+              return {
+                success: false,
+                error: 'Account not found',
+              };
+            }
+
+            // 小红书使用 Gateway check-login
+            if (account.platform === 'xiaohongshu') {
+              const gatewayService = getGatewayService();
+
+              // 调用 Gateway check-login（异步，不等待回调）
+              // 回调会在后台更新账号状态
+              gatewayService.checkLogin(id).catch((err) => {
+                logger.error('Gateway check-login error', {
+                  accountId: id,
+                  error: String(err),
+                });
+              });
+
+              logger.info('Xiaohongshu check-login request sent, waiting for callback', {
+                accountId: id,
+              });
+
+              // 返回成功，让客户端知道请求已发送
+              return {
+                success: true,
+                data: {
+                  isLoggedIn: null, // 待回调更新
+                  message: 'Check-login request sent, waiting for callback',
+                  verifiedAt: new Date(),
+                  platform: account.platform,
+                  verifyMethod: 'gateway-mcp',
+                },
+              };
+            }
+
+            // 其他平台暂时返回错误（暂时不支持）
+            return {
+              success: false,
+              error: `Platform ${account.platform} login check not implemented via Gateway`,
+            };
+          } catch (error) {
+            const errorMsg = String(error);
+            logger.error('Failed to check login status', {
+              accountId: id,
+              error: errorMsg,
+            });
+
+            return {
+              success: false,
+              error: `Failed to check login: ${errorMsg}`,
+            };
+          }
+        },
+        {
+          params: t.Object({
+            id: t.String(),
+          }),
+        }
+      )
+
+      // 验证 Cookie（保留用于非小红书平台或备用）
       .get(
         '/:id/cookies/verify',
         async ({ params, query }) => {
@@ -494,6 +570,14 @@ export function setupAccountsRoutes() {
               return {
                 success: false,
                 error: 'No cookies found for this account',
+              };
+            }
+
+            // 小红书建议使用 /check-login 端点
+            if (account.platform === 'xiaohongshu') {
+              return {
+                success: false,
+                error: 'Use POST /accounts/:id/cookies/check-login for Xiaohongshu',
               };
             }
 

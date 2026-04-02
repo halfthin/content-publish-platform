@@ -23,6 +23,7 @@
     "chromium-bidi": "^15.0.0",
     "cron": "^4.4.0",
     "elysia": "latest",
+    "file-type": "^22.0.0",
     "ioredis": "latest",
     "pino": "^10.3.1",
     "pino-pretty": "^13.1.3",

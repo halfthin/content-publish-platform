@@ -6,6 +6,36 @@ import { moveToPublished } from '../services/content.service';
 
 const logger = createLogger('webhook-route');
 
+// 用于存储 check-login 回调的 pending 状态
+const pendingCheckLoginCallbacks = new Map<
+  string,
+  {
+    resolve: (result: CheckLoginResult) => void;
+    reject: (error: Error) => void;
+    timeout: NodeJS.Timeout;
+  }
+>();
+
+export interface CheckLoginResult {
+  success: boolean;
+  loggedIn: boolean;
+  username?: string;
+  error?: string;
+  qrcodeUrl?: string;
+}
+
+interface CheckLoginCallbackPayload {
+  taskId: string;
+  platform: string;
+  accountId: string;
+  success: boolean;
+  loggedIn: boolean;
+  username?: string;
+  error?: string;
+  qrcodeUrl?: string;
+  checkedAt: string;
+}
+
 /**
  * 验证回调认证
  */
@@ -163,5 +193,95 @@ export function setupWebhookRoutes() {
           }),
         }
       )
+      // check-login 回调
+      .post(
+        '/:platform/check-login-result',
+        async ({ body, headers, set }) => {
+          const authHeader = headers.authorization;
+
+          if (!validateCallbackToken(authHeader)) {
+            logger.warn('Invalid callback token for check-login', {
+              received: authHeader?.substring(0, 10),
+            });
+            set.status = 401;
+            return { success: false, error: 'Unauthorized' };
+          }
+
+          const payload = body as CheckLoginCallbackPayload;
+
+          logger.info('Received check-login callback', {
+            taskId: payload.taskId,
+            accountId: payload.accountId,
+            loggedIn: payload.loggedIn,
+            success: payload.success,
+          });
+
+          // 查找待处理的回调
+          const pending = pendingCheckLoginCallbacks.get(payload.taskId);
+          if (pending) {
+            clearTimeout(pending.timeout);
+            pending.resolve({
+              success: payload.success,
+              loggedIn: payload.loggedIn,
+              username: payload.username,
+              error: payload.error,
+              qrcodeUrl: payload.qrcodeUrl,
+            });
+            pendingCheckLoginCallbacks.delete(payload.taskId);
+          } else {
+            // 更新账号登录状态
+            try {
+              await prisma.account.update({
+                where: { id: payload.accountId },
+                data: {
+                  loginStatus: payload.loggedIn ? 'LOGGED_IN' : 'EXPIRED',
+                },
+              });
+              logger.info('Account login status updated from callback', {
+                accountId: payload.accountId,
+                loginStatus: payload.loggedIn ? 'LOGGED_IN' : 'EXPIRED',
+              });
+            } catch (error) {
+              logger.warn('Failed to update account login status', {
+                accountId: payload.accountId,
+                error: String(error),
+              });
+            }
+          }
+
+          return { success: true };
+        },
+        {
+          body: t.Object({
+            taskId: t.String(),
+            platform: t.String(),
+            accountId: t.String(),
+            success: t.Boolean(),
+            loggedIn: t.Boolean(),
+            username: t.Optional(t.String()),
+            error: t.Optional(t.String()),
+            qrcodeUrl: t.Optional(t.String()),
+            checkedAt: t.String(),
+          }),
+          params: t.Object({
+            platform: t.String(),
+          }),
+        }
+      )
   );
+}
+
+// 导出 pending 回调管理器，供 gateway.service.ts 使用
+export function addPendingCheckLoginCallback(
+  taskId: string,
+  timeoutMs: number = 60000
+): Promise<CheckLoginResult> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      pendingCheckLoginCallbacks.delete(taskId);
+      reject(new Error('Check-login timeout'));
+    }, timeoutMs);
+
+    pendingCheckLoginCallbacks.set(taskId, { resolve, reject, timeout });
+  });
 }

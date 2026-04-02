@@ -152,7 +152,7 @@ export async function scanInbox(): Promise<ApiResponse> {
 }
 
 /**
- * 发布内容
+ * 发布内容到单个账号
  */
 export async function publishContent(
   id: string,
@@ -162,6 +162,21 @@ export async function publishContent(
   const response = await apiClient.post(`/contents/${id}/publish`, {
     platform,
     accountId,
+  });
+  return response as unknown as ApiResponse;
+}
+
+/**
+ * 发布内容到多个账号
+ */
+export async function publishContentToMany(
+  id: string,
+  platform: string,
+  accountIds: string[]
+): Promise<ApiResponse<{ results: Array<{ accountId: string; success: boolean; jobId?: string; error?: string }> }>> {
+  const response = await apiClient.post(`/contents/${id}/publish`, {
+    platform,
+    accountIds,
   });
   return response as unknown as ApiResponse;
 }

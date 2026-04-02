@@ -10,6 +10,12 @@ export interface GatewayPublishParams {
   accountId: string;
   contentPath: string; // 绝对路径，如 /home/halfthin/dev/content-publish-platform/content/approved/xxx
   taskId?: string;
+  cookies?: Array<{
+    name: string;
+    value: string;
+    domain: string;
+    path?: string;
+  }>;
 }
 
 export interface GatewayPublishResult {
@@ -88,6 +94,7 @@ class GatewayService {
       },
       payload: {
         contentPath: params.contentPath,
+        ...(params.cookies && { cookies: params.cookies }),
       },
     };
 
@@ -152,6 +159,82 @@ class GatewayService {
       return response.ok;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * 获取 check-login 回调 URL
+   */
+  private getCheckLoginCallbackUrl(): string {
+    const baseUrl = process.env.API_BASE_URL || 'http://localhost:50000';
+    return `${baseUrl}/api/webhook/xhs/check-login-result`;
+  }
+
+  /**
+   * 调用 Gateway 检查登录状态（通过回调返回结果）
+   */
+  async checkLogin(
+    accountId: string
+  ): Promise<{ success: boolean; taskId: string; error?: string }> {
+    const taskId = randomUUID();
+    const action = 'check-login';
+    const platform = 'xiaohongshu';
+
+    const payload = {
+      taskId,
+      contentId: '', // check-login 不需要 contentId
+      accountId,
+      platform,
+      action,
+      callback: {
+        url: this.getCheckLoginCallbackUrl(),
+        token: this.fromToken,
+      },
+    };
+
+    logger.info('Calling gateway check-login', { taskId, accountId });
+
+    try {
+      const response = await fetch(
+        `${this.baseUrl}/webhooks/cpp/${this.mapPlatformToGateway(platform)}/${action}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(this.toToken ? { Authorization: `Bearer ${this.toToken}` } : {}),
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        logger.error('Gateway check-login failed', {
+          status: response.status,
+          error: errorText,
+        });
+        return {
+          success: false,
+          taskId,
+          error: `Gateway returned ${response.status}: ${errorText}`,
+        };
+      }
+
+      const result = await response.json();
+      logger.info('Gateway check-login accepted', { taskId, result });
+
+      return {
+        success: true,
+        taskId,
+      };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error('Gateway check-login error', { error: errorMsg });
+      return {
+        success: false,
+        taskId,
+        error: errorMsg,
+      };
     }
   }
 }

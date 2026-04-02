@@ -123,7 +123,7 @@ export async function getContentById(id: string): Promise<ContentWithPreview | n
   const previewUrls = content.images.map((img) => {
     let relativePath = relative(content.basePath, img);
     // 清理 relative 返回的开头的 ./ 或 .\
-    relativePath = relativePath.replace(/^[.\\\/]+/, '');
+    relativePath = relativePath.replace(/^[.\\/]+/, '');
     return `/api/contents/${content.id}/files/${encodeURIComponent(relativePath)}`;
   });
 

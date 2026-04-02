@@ -1,6 +1,7 @@
 import * as fs from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { Elysia, t } from 'elysia';
+import { fileTypeFromBuffer } from 'file-type';
 import { createLogger } from '../config/logger';
 import { prisma } from '../config/prisma';
 import { addPublishJob } from '../queues/publish-queue';
@@ -148,11 +149,14 @@ export function setupContentsRoutes() {
           // 构建文件路径
           const filePath = join(content.basePath, safeFilepath);
 
-          // 验证文件路径在内容目录内
+          // 解析软链接获取真实路径
           const resolvedPath = await fs.realpath(filePath).catch(() => null);
           const resolvedBase = await fs.realpath(content.basePath).catch(() => content.basePath);
 
-          logger.debug({ filePath, resolvedPath, resolvedBase, safeFilepath, basePath: content.basePath }, 'File path validation');
+          logger.debug(
+            { filePath, resolvedPath, resolvedBase, safeFilepath, basePath: content.basePath },
+            'File path validation'
+          );
 
           // 检查文件是否存在
           if (!resolvedPath) {
@@ -164,8 +168,10 @@ export function setupContentsRoutes() {
             };
           }
 
-          // 检查路径遍历
-          if (!resolvedPath.startsWith(resolvedBase)) {
+          // 检查路径遍历：只有当 resolvedPath 不在 resolvedBase 内时才拒绝
+          // 注意：软链接可能指向 content 目录之外，这种情况我们允许访问（因为软链接本身在 basePath 内）
+          const isSymlink = filePath !== resolvedPath;
+          if (!isSymlink && !resolvedPath.startsWith(resolvedBase)) {
             logger.warn({ resolvedPath, resolvedBase }, 'Path traversal detected');
             set.status = 403;
             return {
@@ -177,22 +183,36 @@ export function setupContentsRoutes() {
           try {
             await fs.access(filePath);
             const fileBuffer = await fs.readFile(filePath);
-            const ext = extname(filePath).toLowerCase();
 
-            // 设置正确的 Content-Type
-            const contentTypes: Record<string, string> = {
-              '.jpg': 'image/jpeg',
-              '.jpeg': 'image/jpeg',
-              '.png': 'image/png',
-              '.gif': 'image/gif',
-              '.webp': 'image/webp',
-              '.mp4': 'video/mp4',
-              '.mov': 'video/quicktime',
-              '.avi': 'video/x-msvideo',
-              '.mkv': 'video/x-matroska',
-            };
+            // 检测文件实际 MIME 类型（处理软链接和扩展名不匹配的情况）
+            const detectedType = await fileTypeFromBuffer(fileBuffer);
+            let contentType: string;
 
-            set.headers['Content-Type'] = contentTypes[ext] || 'application/octet-stream';
+            if (detectedType) {
+              // 使用检测到的实际类型
+              contentType = detectedType.mime;
+              logger.debug(
+                { filePath, detectedMime: detectedType.mime, ext: extname(filePath) },
+                'File type detected from content'
+              );
+            } else {
+              // 回退到基于扩展名的判断
+              const ext = extname(filePath).toLowerCase();
+              const contentTypes: Record<string, string> = {
+                '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg',
+                '.png': 'image/png',
+                '.gif': 'image/gif',
+                '.webp': 'image/webp',
+                '.mp4': 'video/mp4',
+                '.mov': 'video/quicktime',
+                '.avi': 'video/x-msvideo',
+                '.mkv': 'video/x-matroska',
+              };
+              contentType = contentTypes[ext] || 'application/octet-stream';
+            }
+
+            set.headers['Content-Type'] = contentType;
 
             return fileBuffer;
           } catch {

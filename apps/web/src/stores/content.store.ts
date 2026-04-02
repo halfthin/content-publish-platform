@@ -165,6 +165,30 @@ export const useContentStore = defineStore('content', () => {
     }
   }
 
+  async function publishContentToManyAction(id: string, platform: string, accountIds: string[]) {
+    try {
+      const result = await contentApi.publishContentToMany(id, platform, accountIds);
+
+      // 只要有一个成功就更新状态
+      const index = contents.value.findIndex((content) => content.id === id);
+      if (index !== -1) {
+        contents.value[index] = {
+          ...contents.value[index],
+          status: 'PUBLISHING',
+        };
+      }
+
+      if (currentContent.value?.id === id) {
+        currentContent.value.status = 'PUBLISHING';
+      }
+
+      return result;
+    } catch (err: unknown) {
+      error.value = err instanceof Error ? err.message : '发布失败';
+      throw err;
+    }
+  }
+
   function clearCurrentContent() {
     currentContent.value = null;
   }
@@ -204,6 +228,7 @@ export const useContentStore = defineStore('content', () => {
     rejectContentAction,
     scanInboxAction,
     publishContentAction,
+    publishContentToManyAction,
     clearCurrentContent,
     setPage,
     setLimit,

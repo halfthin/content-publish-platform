@@ -9,6 +9,7 @@ import { WeiboPublisher } from '../publishers/weibo';
 import { XiaohongshuPublisher } from '../publishers/xiaohongshu';
 import { moveToPublished } from '../services/content.service';
 import { getGatewayService } from '../services/gateway.service';
+import { decryptCookies } from '../utils/encryption';
 
 const logger = createLogger('publish-queue');
 
@@ -681,6 +682,35 @@ export class PublishQueue {
       };
     }
 
+    // 获取账号的 cookies 并解密
+    let cookies: Array<{ name: string; value: string; domain: string; path?: string }> | undefined;
+    try {
+      const account = await prisma.account.findUnique({
+        where: { id: accountId },
+        select: { encryptedCookies: true, cookiePassword: true },
+      });
+
+      if (account?.encryptedCookies) {
+        const password =
+          account.cookiePassword || process.env.COOKIE_ENCRYPTION_KEY || 'default-password';
+        const decryptedCookies = await decryptCookies(account.encryptedCookies, password);
+        // 转换为简化的 cookie 格式
+        cookies = (Array.isArray(decryptedCookies) ? decryptedCookies : []).map((c) => ({
+          name: String(c.name || ''),
+          value: String(c.value || ''),
+          domain: String(c.domain || ''),
+          path: c.path ? String(c.path) : undefined,
+        }));
+        logger.debug('Cookies decrypted for Gateway publish', { accountId });
+      }
+    } catch (error) {
+      logger.error('Failed to decrypt cookies for Gateway publish', {
+        accountId,
+        error: String(error),
+      });
+      // cookies 获取失败不影响主要流程，继续发布
+    }
+
     const gatewayService = getGatewayService();
 
     // 调用 Gateway
@@ -690,6 +720,7 @@ export class PublishQueue {
       accountId,
       contentPath: content.basePath,
       taskId: job.data.taskId,
+      cookies,
     });
 
     if (!result.success) {
