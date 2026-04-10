@@ -405,7 +405,7 @@
           <div class="section-header">
             <div>
               <h3>选片篮</h3>
-              <p class="section-helper">支持跨日期、跨收藏目录同时选图</p>
+              <p class="section-helper">支持跨日期、跨收藏目录同时选图，也可拖拽排序</p>
             </div>
             <el-tag size="small" type="success">{{ selectionStore.selectedCount }} 张</el-tag>
           </div>
@@ -425,18 +425,51 @@
               :disabled="selectionStore.selectedCount === 0"
               @click="openActionDialog(definition.type)"
             >
-              {{ definition.label }}
+              {{ getActionButtonLabel(definition.type) }}
             </el-button>
           </div>
 
-          <div v-if="selectionStore.selectedItems.length > 0" class="selection-list">
-            <div v-for="item in selectionStore.selectedItems" :key="item.assetKey" class="selection-item">
-              <img :src="item.thumbUrl" :alt="item.filename" class="selection-thumb" loading="lazy" />
+          <div
+            v-if="selectionStore.selectedItems.length > 0"
+            ref="selectionListRef"
+            class="selection-list"
+          >
+            <div
+              v-for="(item, itemIndex) in selectionStore.selectedItems"
+              :key="item.assetKey"
+              :data-asset-key="item.assetKey"
+              class="selection-item"
+              :class="{
+                dragging: draggedSelectionAssetKey === item.assetKey,
+                'drop-before':
+                  selectionDropTarget?.assetKey === item.assetKey &&
+                  selectionDropTarget.position === 'before',
+                'drop-after':
+                  selectionDropTarget?.assetKey === item.assetKey &&
+                  selectionDropTarget.position === 'after',
+              }"
+            >
+              <img
+                :src="item.thumbUrl"
+                :alt="item.filename"
+                class="selection-thumb"
+                loading="lazy"
+                draggable="false"
+              />
+              <div class="selection-order-badge">{{ itemIndex + 1 }}</div>
               <div class="selection-meta">
                 <div class="selection-name">{{ item.filename }}</div>
                 <div class="selection-path">{{ item.parentPath }}</div>
               </div>
               <div class="selection-item-actions">
+                <button
+                  class="selection-drag-handle"
+                  type="button"
+                  title="拖拽调整顺序"
+                  @pointerdown="handleSelectionHandlePointerDown(item.assetKey, $event)"
+                >
+                  ⋮⋮
+                </button>
                 <el-button link @click="previewStandalone(item)">预览</el-button>
                 <el-button link type="danger" @click="selectionStore.removeSelection(item.assetKey)">移除</el-button>
               </div>
@@ -547,7 +580,7 @@
 <script setup lang="ts">
 /* biome-ignore-all lint/correctness/noUnusedVariables lint/correctness/noUnusedImports: Vue <script setup> bindings are consumed by the template. */
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import type { MediaActionDefinition, MediaFavoritePath, MediaItem } from '@/api/media';
 import { getMediaFileUrl, getMediaThumbUrl } from '@/api/media';
 import SmartMediaImage from '@/components/media/SmartMediaImage.vue';
@@ -594,6 +627,7 @@ const mediaStore = useMediaLibraryStore();
 const selectionStore = useMediaSelectionStore();
 const actionDialogVisible = ref(false);
 const previewDialogVisible = ref(false);
+const selectionListRef = ref<HTMLElement | null>(null);
 const previewItems = ref<SelectedMediaItem[]>([]);
 const previewIndex = ref(0);
 const previewSectionTitle = ref('预览');
@@ -601,11 +635,28 @@ const viewDensity = ref<'compact' | 'comfortable'>('compact');
 const workspaceView = ref<'stream' | 'albums'>('stream');
 const activeActionType = ref<MediaActionDefinition['type'] | null>(null);
 const submittingAction = ref(false);
+const draggedSelectionAssetKey = ref<string | null>(null);
+const selectionDropTarget = ref<{
+  assetKey: string;
+  position: 'before' | 'after';
+} | null>(null);
+const selectionAutoScrollVelocity = ref(0);
 const actionForm = reactive({
   operator: '',
   formData: {} as Record<string, string>,
 });
 const thumbPreloadCache = new Set<string>();
+let selectionAutoScrollFrame: number | null = null;
+let selectionPointerDragState: {
+  assetKey: string;
+  pointerId: number;
+  startY: number;
+} | null = null;
+const actionButtonLabelMap: Record<MediaActionDefinition['type'], string> = {
+  'wx-work-post': '企业微信',
+  'wechat-article': '公众号',
+  'notify-photographer': '图生图',
+};
 
 const dateTreeNodes = computed<DateTreeNode[]>(() => {
   return mediaStore.dateTree.map((year) => ({
@@ -917,6 +968,223 @@ function previewStandalone(item: SelectedMediaItem) {
   previewDialogVisible.value = true;
 }
 
+function stopSelectionAutoScroll() {
+  selectionAutoScrollVelocity.value = 0;
+
+  if (selectionAutoScrollFrame !== null && typeof window !== 'undefined') {
+    window.cancelAnimationFrame(selectionAutoScrollFrame);
+    selectionAutoScrollFrame = null;
+  }
+}
+
+function runSelectionAutoScroll() {
+  if (selectionAutoScrollFrame !== null || typeof window === 'undefined') {
+    return;
+  }
+
+  const tick = () => {
+    const listElement = selectionListRef.value;
+    const velocity = selectionAutoScrollVelocity.value;
+
+    if (!listElement || !velocity) {
+      selectionAutoScrollFrame = null;
+      return;
+    }
+
+    listElement.scrollTop += velocity;
+    selectionAutoScrollFrame = window.requestAnimationFrame(tick);
+  };
+
+  selectionAutoScrollFrame = window.requestAnimationFrame(tick);
+}
+
+function updateSelectionAutoScroll(clientY: number) {
+  const listElement = selectionListRef.value;
+  if (!listElement || !draggedSelectionAssetKey.value) {
+    stopSelectionAutoScroll();
+    return;
+  }
+
+  const rect = listElement.getBoundingClientRect();
+  const threshold = 72;
+  const maxVelocity = 18;
+  let nextVelocity = 0;
+
+  if (clientY < rect.top + threshold) {
+    nextVelocity = -Math.ceil(((rect.top + threshold - clientY) / threshold) * maxVelocity);
+  } else if (clientY > rect.bottom - threshold) {
+    nextVelocity = Math.ceil(((clientY - (rect.bottom - threshold)) / threshold) * maxVelocity);
+  }
+
+  selectionAutoScrollVelocity.value = nextVelocity;
+
+  if (nextVelocity === 0) {
+    stopSelectionAutoScroll();
+    return;
+  }
+
+  runSelectionAutoScroll();
+}
+
+function cleanupSelectionPointerListeners() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.removeEventListener('pointermove', handleSelectionPointerMove);
+  window.removeEventListener('pointerup', handleSelectionPointerUp);
+  window.removeEventListener('pointercancel', handleSelectionPointerUp);
+}
+
+function resetSelectionDragState() {
+  cleanupSelectionPointerListeners();
+  selectionPointerDragState = null;
+  draggedSelectionAssetKey.value = null;
+  selectionDropTarget.value = null;
+  stopSelectionAutoScroll();
+}
+
+function updateSelectionDropTargetFromPointer(sourceAssetKey: string, clientY: number) {
+  const listElement = selectionListRef.value;
+  if (!listElement) {
+    selectionDropTarget.value = null;
+    return;
+  }
+
+  const candidateElements = Array.from(
+    listElement.querySelectorAll<HTMLElement>('.selection-item[data-asset-key]')
+  ).filter((element) => element.dataset.assetKey && element.dataset.assetKey !== sourceAssetKey);
+
+  if (candidateElements.length === 0) {
+    selectionDropTarget.value = null;
+    return;
+  }
+
+  const firstElement = candidateElements[0];
+  const lastElement = candidateElements[candidateElements.length - 1];
+
+  if (clientY <= firstElement.getBoundingClientRect().top) {
+    selectionDropTarget.value = {
+      assetKey: firstElement.dataset.assetKey || '',
+      position: 'before',
+    };
+    return;
+  }
+
+  if (lastElement && clientY >= lastElement.getBoundingClientRect().bottom) {
+    selectionDropTarget.value = {
+      assetKey: lastElement.dataset.assetKey || '',
+      position: 'after',
+    };
+    return;
+  }
+
+  for (const element of candidateElements) {
+    const assetKey = element.dataset.assetKey;
+    if (!assetKey) {
+      continue;
+    }
+
+    const rect = element.getBoundingClientRect();
+    if (clientY < rect.top || clientY > rect.bottom) {
+      continue;
+    }
+
+    selectionDropTarget.value = {
+      assetKey,
+      position: clientY >= rect.top + rect.height / 2 ? 'after' : 'before',
+    };
+    return;
+  }
+
+  let nearestElement: HTMLElement | null = null;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  for (const element of candidateElements) {
+    const rect = element.getBoundingClientRect();
+    const centerY = rect.top + rect.height / 2;
+    const distance = Math.abs(clientY - centerY);
+
+    if (distance < nearestDistance) {
+      nearestElement = element;
+      nearestDistance = distance;
+    }
+  }
+
+  if (!nearestElement || !nearestElement.dataset.assetKey) {
+    selectionDropTarget.value = null;
+    return;
+  }
+
+  const nearestRect = nearestElement.getBoundingClientRect();
+  selectionDropTarget.value = {
+    assetKey: nearestElement.dataset.assetKey,
+    position: clientY >= nearestRect.top + nearestRect.height / 2 ? 'after' : 'before',
+  };
+}
+
+function handleSelectionHandlePointerDown(assetKey: string, event: PointerEvent) {
+  if (event.button !== 0) {
+    return;
+  }
+
+  selectionPointerDragState = {
+    assetKey,
+    pointerId: event.pointerId,
+    startY: event.clientY,
+  };
+  selectionDropTarget.value = null;
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('pointermove', handleSelectionPointerMove);
+    window.addEventListener('pointerup', handleSelectionPointerUp);
+    window.addEventListener('pointercancel', handleSelectionPointerUp);
+  }
+
+  const handleElement = event.currentTarget;
+  if (handleElement instanceof HTMLElement && handleElement.setPointerCapture) {
+    handleElement.setPointerCapture(event.pointerId);
+  }
+
+  event.preventDefault();
+}
+
+function handleSelectionPointerMove(event: PointerEvent) {
+  const pointerState = selectionPointerDragState;
+  if (!pointerState || event.pointerId !== pointerState.pointerId) {
+    return;
+  }
+
+  if (!draggedSelectionAssetKey.value) {
+    const moveDistance = Math.abs(event.clientY - pointerState.startY);
+    if (moveDistance < 4) {
+      return;
+    }
+    draggedSelectionAssetKey.value = pointerState.assetKey;
+  }
+
+  updateSelectionAutoScroll(event.clientY);
+  updateSelectionDropTargetFromPointer(pointerState.assetKey, event.clientY);
+  event.preventDefault();
+}
+
+function handleSelectionPointerUp(event: PointerEvent) {
+  const pointerState = selectionPointerDragState;
+  if (!pointerState || event.pointerId !== pointerState.pointerId) {
+    return;
+  }
+
+  if (draggedSelectionAssetKey.value && selectionDropTarget.value?.assetKey) {
+    selectionStore.moveSelection(
+      draggedSelectionAssetKey.value,
+      selectionDropTarget.value.assetKey,
+      selectionDropTarget.value.position
+    );
+  }
+
+  resetSelectionDragState();
+}
+
 function setPreviewIndex(index: number) {
   if (index < 0 || index >= previewItems.value.length) {
     return;
@@ -1080,6 +1348,10 @@ function getActionLabel(actionType: string) {
   );
 }
 
+function getActionButtonLabel(actionType: MediaActionDefinition['type']) {
+  return actionButtonLabelMap[actionType] || getActionLabel(actionType);
+}
+
 function getActionStatusType(status: string) {
   switch (status) {
     case 'SUCCESS':
@@ -1125,6 +1397,10 @@ watch(
 
 onMounted(() => {
   void mediaStore.initialize();
+});
+
+onBeforeUnmount(() => {
+  stopSelectionAutoScroll();
 });
 </script>
 
@@ -1295,14 +1571,38 @@ onMounted(() => {
   top: 16px;
 }
 
+.sidebar-right {
+  height: calc(100vh - 32px);
+}
+
 .section-panel {
   padding: 18px;
   overflow: hidden;
 }
 
 .sidebar-panel {
-  max-height: calc(100vh - 48px);
-  overflow-y: auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.basket-panel,
+.recent-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.basket-panel {
+  flex: 1 1 auto;
+  min-height: 440px;
+}
+
+.recent-panel {
+  flex: 0 0 clamp(260px, 28vh, 320px);
+}
+
+.basket-panel :deep(.el-empty),
+.recent-panel :deep(.el-empty) {
+  margin: auto 0;
 }
 
 .content-area {
@@ -1383,12 +1683,21 @@ onMounted(() => {
 .workspace-chips,
 .favorite-tags,
 .favorite-actions,
-.action-buttons,
 .selection-summary,
 .workspace-overview {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.action-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.action-buttons :deep(.el-button) {
+  margin: 0;
 }
 
 .workspace-ribbon {
@@ -1473,6 +1782,13 @@ onMounted(() => {
   flex-direction: column;
   gap: 12px;
   margin-top: 14px;
+}
+
+.selection-list,
+.recent-actions {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .favorite-item,
@@ -1768,10 +2084,38 @@ onMounted(() => {
 }
 
 .selection-item {
+  position: relative;
   display: grid;
   grid-template-columns: 56px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
+  user-select: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+}
+
+.selection-item.dragging {
+  opacity: 0.56;
+  cursor: grabbing;
+}
+
+.selection-item.drop-before::before,
+.selection-item.drop-after::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  height: 3px;
+  border-radius: 999px;
+  background: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+}
+
+.selection-item.drop-before::before {
+  top: -2px;
+}
+
+.selection-item.drop-after::after {
+  bottom: -2px;
 }
 
 .selection-thumb {
@@ -1780,10 +2124,57 @@ onMounted(() => {
   border-radius: 10px;
 }
 
+.selection-order-badge {
+  position: absolute;
+  top: 8px;
+  left: 44px;
+  z-index: 1;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.88);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18);
+  pointer-events: none;
+}
+
 .selection-item-actions {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
+  gap: 2px;
+}
+
+.selection-item-actions :deep(.el-button) {
+  user-select: none;
+}
+
+.selection-drag-handle {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 18px;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.selection-drag-handle:hover {
+  color: #475569;
+}
+
+.selection-drag-handle:active {
+  cursor: grabbing;
 }
 
 .recent-action-error {
@@ -1869,6 +2260,15 @@ onMounted(() => {
   .sidebar-left,
   .sidebar-right {
     position: static;
+  }
+
+  .sidebar-right {
+    height: auto;
+  }
+
+  .basket-panel,
+  .recent-panel {
+    min-height: unset;
   }
 }
 
