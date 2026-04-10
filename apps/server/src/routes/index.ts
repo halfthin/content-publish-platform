@@ -3,6 +3,8 @@ import { Elysia } from 'elysia';
 import { logger } from '../config/logger';
 import { setupAccountsRoutes } from './accounts';
 import { setupContentsRoutes } from './contents';
+import { setupMediaRoutes } from './media';
+import { setupMediaActionRoutes } from './media-actions';
 import { setupPublishStatusRoutes } from './publish-status';
 import { setupWebhookRoutes } from './webhook';
 
@@ -43,6 +45,10 @@ export function setupRoutes() {
       .use(setupPublishStatusRoutes())
       // Webhook 回调
       .use(setupWebhookRoutes())
+      // 素材库 API
+      .use(setupMediaRoutes())
+      // 素材动作 API
+      .use(setupMediaActionRoutes())
       .onRequest(({ path, method }) => {
         // 过滤高频噪音路径
         if (path === '/ws' || path.startsWith('/ws/')) {

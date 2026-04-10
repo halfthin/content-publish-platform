@@ -3,6 +3,8 @@ import { Elysia } from 'elysia';
 import { logger } from './config/logger';
 import { browserPool, initializeBrowser } from './config/playwright';
 import { disconnectPrisma } from './config/prisma';
+import { disconnectRedisClient } from './config/redis';
+import { closeMediaActionQueueExecutor, startMediaActionWorker } from './queues/media-action-queue';
 import { getPublishQueue, startAllWorkers } from './queues/publish-queue';
 import { setupRoutes } from './routes';
 import { startFileWatcher, stopFileWatcher } from './services/file-watcher.service';
@@ -54,6 +56,14 @@ async function bootstrap() {
     logger.error({ module: 'publish-queue', error }, 'Failed to start workers');
   }
 
+  try {
+    // 4. 启动素材动作队列 Worker
+    startMediaActionWorker();
+    logger.info({ module: 'media-action-queue' }, 'Media action workers started');
+  } catch (error) {
+    logger.error({ module: 'media-action-queue', error }, 'Failed to start media action workers');
+  }
+
   logger.info({ module: 'bootstrap' }, 'Bootstrap completed');
 }
 
@@ -74,7 +84,15 @@ const shutdown = async (signal: string) => {
     logger.error({ module: 'publish-queue', error }, 'Error closing publish queue');
   }
 
-  // 3. 关闭浏览器池
+  // 3. 关闭素材动作队列
+  try {
+    await closeMediaActionQueueExecutor();
+    logger.info({ module: 'media-action-queue' }, 'Media action queue closed');
+  } catch (error) {
+    logger.error({ module: 'media-action-queue', error }, 'Error closing media action queue');
+  }
+
+  // 4. 关闭浏览器池
   try {
     await browserPool.close();
     logger.info({ module: 'playwright' }, 'Browser pool closed');
@@ -87,6 +105,9 @@ const shutdown = async (signal: string) => {
 
   // 5. 断开数据库连接
   await disconnectPrisma();
+
+  // 6. 断开共享 Redis 连接
+  await disconnectRedisClient();
 
   logger.info({}, 'Server shutdown complete');
   process.exit(0);

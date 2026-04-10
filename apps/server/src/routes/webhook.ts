@@ -1,8 +1,15 @@
 import { Elysia, t } from 'elysia';
 import { gatewayConfig } from '../config/gateway';
 import { createLogger } from '../config/logger';
+import { getMediaActionGatewayConfig } from '../config/media-actions';
 import { prisma } from '../config/prisma';
 import { moveToPublished } from '../services/content.service';
+import {
+  createMediaActionsService,
+  createRedisMediaActionStore,
+  type MediaActionsService,
+} from '../services/media-actions.service';
+import { createMediaLibraryService } from '../services/media-library.service';
 
 const logger = createLogger('webhook-route');
 
@@ -36,6 +43,27 @@ interface CheckLoginCallbackPayload {
   checkedAt: string;
 }
 
+interface SetupWebhookRoutesOptions {
+  mediaActionsService?: MediaActionsService;
+  mediaActionCallbackToken?: string;
+}
+
+function validateOptionalBearerToken(
+  authHeader: string | undefined,
+  expectedToken: string
+): boolean {
+  if (!expectedToken) {
+    return true;
+  }
+
+  if (!authHeader) {
+    return false;
+  }
+
+  const token = authHeader.replace(/^Bearer\s+/i, '');
+  return token === expectedToken;
+}
+
 /**
  * 验证回调认证
  */
@@ -51,7 +79,15 @@ function validateCallbackToken(authHeader: string | undefined): boolean {
 /**
  * Webhook 路由
  */
-export function setupWebhookRoutes() {
+export function setupWebhookRoutes(options: SetupWebhookRoutesOptions = {}) {
+  const mediaActionGatewayConfig = getMediaActionGatewayConfig();
+  const mediaActionsService =
+    options.mediaActionsService ||
+    createMediaActionsService({
+      mediaService: createMediaLibraryService(),
+      store: createRedisMediaActionStore(),
+    });
+
   return (
     new Elysia({ prefix: '/api/webhook' })
       // 通用的发布结果回调 (支持 xhs, weibo, douyin 等平台)
@@ -190,6 +226,56 @@ export function setupWebhookRoutes() {
           }),
           params: t.Object({
             platform: t.String(),
+          }),
+        }
+      )
+
+      // media action 回调
+      .post(
+        '/media-actions/:actionType/result',
+        async ({ body, headers, params, set }) => {
+          const isAuthorized = validateOptionalBearerToken(
+            headers.authorization,
+            options.mediaActionCallbackToken || mediaActionGatewayConfig.fromGatewayToken
+          );
+
+          if (!isAuthorized) {
+            set.status = 401;
+            return { success: false, error: 'Unauthorized' };
+          }
+
+          try {
+            await mediaActionsService.handleCallback({
+              ...(body as Record<string, unknown>),
+              actionType: params.actionType,
+            } as Parameters<MediaActionsService['handleCallback']>[0]);
+            return { success: true };
+          } catch (error) {
+            if (error instanceof Error && 'status' in error) {
+              set.status = Number((error as { status: number }).status || 500);
+              return { success: false, error: error.message };
+            }
+            set.status = 500;
+            return { success: false, error: 'Internal error' };
+          }
+        },
+        {
+          body: t.Object({
+            jobId: t.Optional(t.String()),
+            taskId: t.Optional(t.String()),
+            actionType: t.Optional(t.String()),
+            status: t.Union([
+              t.Literal('queued'),
+              t.Literal('running'),
+              t.Literal('success'),
+              t.Literal('failed'),
+            ]),
+            error: t.Optional(t.String()),
+            result: t.Optional(t.Record(t.String(), t.Any())),
+            timestamp: t.Optional(t.String()),
+          }),
+          params: t.Object({
+            actionType: t.String(),
           }),
         }
       )

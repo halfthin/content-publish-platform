@@ -36,6 +36,10 @@
               <el-icon><PieChart /></el-icon>
               <span>Cookie 配置</span>
             </el-menu-item>
+            <el-menu-item index="/media-library">
+              <el-icon><PictureFilled /></el-icon>
+              <span>素材库</span>
+            </el-menu-item>
             <el-menu-item index="/publish">
               <el-icon><VideoPlay /></el-icon>
               <span>发布管理</span>
@@ -64,6 +68,7 @@ import {
   DataLine,
   Document,
   HomeFilled,
+  PictureFilled,
   PieChart,
   User,
   VideoPlay,
@@ -129,7 +134,7 @@ onUnmounted(() => {
   wsService.offMessage(handleWebSocketMessage);
 });
 
-void [activeMenu, Clock, DataLine, Document, HomeFilled, PieChart, User, VideoPlay];
+void [activeMenu, Clock, DataLine, Document, HomeFilled, PieChart, PictureFilled, User, VideoPlay];
 </script>
 
 <style>

@@ -32,6 +32,12 @@ const routes = [
     meta: { title: 'Cookie 配置' },
   },
   {
+    path: '/media-library',
+    name: 'MediaLibrary',
+    component: () => import('./views/MediaLibrary.vue'),
+    meta: { title: '素材库' },
+  },
+  {
     path: '/publish',
     name: 'Publish',
     component: () => import('./views/Publish.vue'),
