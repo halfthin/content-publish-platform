@@ -25,6 +25,17 @@ export interface Account {
   cookieUpdatedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
+  lastCheckLoginCallback?: {
+    accountId: string;
+    taskId: string;
+    eventId: string;
+    status: string;
+    updatedAt: string;
+    callbackPayload: {
+      raw?: Record<string, unknown>;
+      normalized?: Record<string, unknown>;
+    };
+  } | null;
 }
 
 export interface CreateAccountDto {
@@ -74,73 +85,67 @@ export interface VerifyCookieResult {
 /**
  * 获取账号列表
  */
-export async function getAccounts(params?: { platform?: string; status?: string }) {
-  const response = await apiClient.get('/accounts', { params });
-  return response;
+export async function getAccounts(params?: {
+  platform?: string;
+  status?: string;
+}): Promise<Account[]> {
+  return (await apiClient.get('/accounts', { params })) as Account[];
 }
 
 /**
  * 获取账号详情
  */
-export async function getAccount(id: string) {
-  const response = await apiClient.get(`/accounts/${id}`);
-  return response;
+export async function getAccount(id: string): Promise<Account> {
+  return (await apiClient.get(`/accounts/${id}`)) as Account;
 }
 
 /**
  * 创建账号
  */
-export async function createAccount(data: CreateAccountDto) {
-  const response = await apiClient.post('/accounts', data);
-  return response;
+export async function createAccount(data: CreateAccountDto): Promise<Account> {
+  return (await apiClient.post('/accounts', data)) as Account;
 }
 
 /**
  * 更新账号
  */
-export async function updateAccount(id: string, data: UpdateAccountDto) {
-  const response = await apiClient.put(`/accounts/${id}`, data);
-  return response;
+export async function updateAccount(id: string, data: UpdateAccountDto): Promise<Account> {
+  return (await apiClient.put(`/accounts/${id}`, data)) as Account;
 }
 
 /**
  * 删除账号
  */
-export async function deleteAccount(id: string) {
-  const response = await apiClient.delete(`/accounts/${id}`);
-  return response;
+export async function deleteAccount(id: string): Promise<unknown> {
+  return apiClient.delete(`/accounts/${id}`);
 }
 
 /**
  * 切换账号状态
  */
-export async function toggleAccountStatus(id: string) {
-  const response = await apiClient.post(`/accounts/${id}/toggle-status`);
-  return response;
+export async function toggleAccountStatus(id: string): Promise<Account> {
+  return (await apiClient.post(`/accounts/${id}/toggle-status`)) as Account;
 }
 
 /**
  * 保存 Cookie
  */
-export async function saveCookie(id: string, data: CookieConfigDto) {
-  const response = await apiClient.post(`/accounts/${id}/cookies`, data);
-  return response;
+export async function saveCookie(id: string, data: CookieConfigDto): Promise<unknown> {
+  return apiClient.post(`/accounts/${id}/cookies`, data);
 }
 
 /**
  * 验证 Cookie
  */
-export async function verifyCookie(id: string, password?: string) {
-  const response = await apiClient.get(`/accounts/${id}/cookies/verify`, {
+export async function verifyCookie(id: string, password?: string): Promise<VerifyCookieResult> {
+  return (await apiClient.get(`/accounts/${id}/cookies/verify`, {
     params: { password },
-  });
-  return response;
+  })) as VerifyCookieResult;
 }
 
 /**
  * 删除 Cookie
  */
-export async function deleteCookie(id: string) {
-  const response = await apiClient.delete(`/accounts/${id}/cookies`);
-  return response;
+export async function deleteCookie(id: string): Promise<unknown> {
+  return apiClient.delete(`/accounts/${id}/cookies`);
 }

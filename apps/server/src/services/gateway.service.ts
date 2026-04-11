@@ -8,6 +8,7 @@ export interface GatewayPublishParams {
   platform: 'xiaohongshu' | 'weibo' | 'douyin' | 'bilibili' | 'wechat';
   contentId: string;
   accountId: string;
+  publishLogId?: string;
   contentPath: string; // 绝对路径，如 /home/halfthin/dev/content-publish-platform/content/approved/xxx
   taskId?: string;
   cookies?: Array<{
@@ -88,6 +89,11 @@ class GatewayService {
       accountId: params.accountId,
       platform: params.platform,
       action,
+      refs: {
+        publishLogId: params.publishLogId || null,
+        contentId: params.contentId,
+        accountId: params.accountId,
+      },
       callback: {
         url: this.getCallbackUrl(params.platform),
         token: this.fromToken,
@@ -186,6 +192,11 @@ class GatewayService {
       accountId,
       platform,
       action,
+      kind: 'account',
+      actionType: `${platform}.check-login`,
+      refs: {
+        accountId,
+      },
       callback: {
         url: this.getCheckLoginCallbackUrl(),
         token: this.fromToken,

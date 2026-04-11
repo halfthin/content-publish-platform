@@ -581,6 +581,7 @@
 /* biome-ignore-all lint/correctness/noUnusedVariables lint/correctness/noUnusedImports: Vue <script setup> bindings are consumed by the template. */
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import type { MediaActionDefinition, MediaFavoritePath, MediaItem } from '@/api/media';
 import { getMediaFileUrl, getMediaThumbUrl } from '@/api/media';
 import SmartMediaImage from '@/components/media/SmartMediaImage.vue';
@@ -625,6 +626,7 @@ interface WorkspaceStreamGroup {
 
 const mediaStore = useMediaLibraryStore();
 const selectionStore = useMediaSelectionStore();
+const router = useRouter();
 const actionDialogVisible = ref(false);
 const previewDialogVisible = ref(false);
 const selectionListRef = ref<HTMLElement | null>(null);
@@ -655,7 +657,7 @@ let selectionPointerDragState: {
 const actionButtonLabelMap: Record<MediaActionDefinition['type'], string> = {
   'wx-work-post': '企业微信',
   'wechat-article': '公众号',
-  'notify-photographer': '图生图',
+  'image-to-image': '图生图',
 };
 
 const dateTreeNodes = computed<DateTreeNode[]>(() => {
@@ -1291,6 +1293,11 @@ async function handleDeleteFavorite(favorite: MediaFavoritePath) {
 }
 
 function openActionDialog(actionType: MediaActionDefinition['type']) {
+  if (actionType === 'image-to-image') {
+    void router.push({ name: 'MediaImageToImage' });
+    return;
+  }
+
   activeActionType.value = actionType;
   actionForm.operator = '';
   actionForm.formData = {};

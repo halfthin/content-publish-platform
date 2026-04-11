@@ -29,6 +29,15 @@ function normalizeRoutePrefix(value: string): string {
   return trimTrailingSlash(withLeadingSlash);
 }
 
+function normalizeAbsolutePath(value: string, fallback: string): string {
+  if (!value) {
+    return fallback;
+  }
+
+  const withLeadingSlash = value.startsWith('/') ? value : `/${value}`;
+  return trimTrailingSlash(withLeadingSlash);
+}
+
 function resolveGatewayConfig(
   overrides: Partial<MediaActionGatewayConfig> = {}
 ): MediaActionGatewayConfig {
@@ -39,6 +48,10 @@ function resolveGatewayConfig(
     url: trimTrailingSlash(overrides.url || base.url || ''),
     callbackBaseUrl: trimTrailingSlash(overrides.callbackBaseUrl || base.callbackBaseUrl),
     routePrefix: normalizeRoutePrefix(overrides.routePrefix || base.routePrefix),
+    imageToImageDispatchPath: normalizeAbsolutePath(
+      overrides.imageToImageDispatchPath || base.imageToImageDispatchPath,
+      '/webhooks/cpp/oc/vd-shoot'
+    ),
   };
 }
 
@@ -68,6 +81,114 @@ function extractExternalTaskId(payload: unknown): string | undefined {
   return undefined;
 }
 
+function normalizeOptionalString(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function normalizeOptionalNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const numericValue = Number(trimmed);
+    return Number.isFinite(numericValue) ? numericValue : null;
+  }
+
+  return null;
+}
+
+function normalizeBoolean(value: unknown): boolean {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return normalized === 'true' || normalized === '1' || normalized === 'yes';
+  }
+
+  if (typeof value === 'number') {
+    return value !== 0;
+  }
+
+  return false;
+}
+
+function buildDefaultPayload(
+  summary: MediaActionSummary,
+  callbackUrl: string,
+  callbackToken: string
+) {
+  return {
+    jobId: summary.id,
+    actionType: summary.actionType,
+    operator: summary.operator,
+    refs: {
+      mediaActionId: summary.id,
+    },
+    assets: summary.assets,
+    formData: summary.formData,
+    context: summary.context,
+    source: 'content-publish-platform/media-library',
+    requestedAt: new Date().toISOString(),
+    callback: {
+      url: callbackUrl,
+      token: callbackToken,
+    },
+  };
+}
+
+function buildImageToImagePayload(
+  summary: MediaActionSummary,
+  callbackUrl: string,
+  callbackToken: string
+) {
+  const formData = summary.formData || {};
+
+  return {
+    taskId: summary.id,
+    refs: {
+      mediaActionId: summary.id,
+    },
+    callback: {
+      url: callbackUrl,
+      token: callbackToken,
+    },
+    mode: normalizeOptionalString(formData.mode) || 'lifestyle',
+    person: normalizeOptionalString(formData.person),
+    productCode: normalizeOptionalString(formData.productCode),
+    scene: normalizeOptionalString(formData.scene),
+    style: normalizeOptionalString(formData.style),
+    mood: normalizeOptionalString(formData.mood),
+    count: normalizeOptionalNumber(formData.count),
+    size: normalizeOptionalString(formData.size),
+    model: normalizeOptionalString(formData.model),
+    dryRun: normalizeBoolean(formData.dryRun),
+    referenceImages: {
+      ...(summary.assets[0]?.sourcePath ? { product: summary.assets[0].sourcePath } : {}),
+      ...(summary.assets[1]?.sourcePath ? { outfit: summary.assets[1].sourcePath } : {}),
+      ...(normalizeOptionalString(formData.referenceFace)
+        ? { face: normalizeOptionalString(formData.referenceFace) }
+        : {}),
+      ...(normalizeOptionalString(formData.referenceBody)
+        ? { body: normalizeOptionalString(formData.referenceBody) }
+        : {}),
+    },
+    description: normalizeOptionalString(formData.description),
+  };
+}
+
 export function createHttpMediaActionDispatcher(
   options: CreateHttpMediaActionDispatcherOptions = {}
 ): MediaActionDispatcher {
@@ -84,35 +205,24 @@ export function createHttpMediaActionDispatcher(
       }
 
       const callbackUrl = `${config.callbackBaseUrl}/api/webhook/media-actions/${summary.actionType}/result`;
-      const payload = {
-        jobId: summary.id,
-        actionType: summary.actionType,
-        operator: summary.operator,
-        assets: summary.assets,
-        formData: summary.formData,
-        context: summary.context,
-        source: 'content-publish-platform/media-library',
-        requestedAt: new Date().toISOString(),
-        callback: {
-          url: callbackUrl,
-          token: config.fromGatewayToken,
-        },
-      };
+      const payload =
+        summary.actionType === 'image-to-image'
+          ? buildImageToImagePayload(summary, callbackUrl, config.fromGatewayToken)
+          : buildDefaultPayload(summary, callbackUrl, config.fromGatewayToken);
+      const dispatchUrl =
+        summary.actionType === 'image-to-image'
+          ? `${config.url}${config.imageToImageDispatchPath}`
+          : `${config.url}${config.routePrefix}/${summary.actionType}/dispatch`;
 
       try {
-        const response = await fetchImpl(
-          `${config.url}${config.routePrefix}/${summary.actionType}/dispatch`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(config.toGatewayToken
-                ? { Authorization: `Bearer ${config.toGatewayToken}` }
-                : {}),
-            },
-            body: JSON.stringify(payload),
-          }
-        );
+        const response = await fetchImpl(dispatchUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(config.toGatewayToken ? { Authorization: `Bearer ${config.toGatewayToken}` } : {}),
+          },
+          body: JSON.stringify(payload),
+        });
 
         if (!response.ok) {
           const errorText = await response.text();

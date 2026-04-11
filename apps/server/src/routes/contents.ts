@@ -411,6 +411,7 @@ export function setupContentsRoutes() {
               {
                 contentId: id,
                 accountId: targetAccountId,
+                publishLogId: publishLog.id,
                 platform,
                 content: {
                   title: content.title,
@@ -427,6 +428,13 @@ export function setupContentsRoutes() {
             );
 
             // 5. 更新内容状态
+            await prisma.publishLog.update({
+              where: { id: publishLog.id },
+              data: {
+                jobId: job.id,
+              },
+            });
+
             await prisma.content.update({
               where: { id },
               data: { status: 'PUBLISHING' },

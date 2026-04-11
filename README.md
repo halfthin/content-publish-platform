@@ -81,6 +81,12 @@ cd apps/web && ./node_modules/.bin/biome check src
 - 根目录和 `apps/server` 根目录下早期的 `test-*`、`debug-*`、`validate-*` 一次性脚本已清理。
 - 当前维护入口以 `bun test`、`RUN_INTEGRATION_TESTS=true bun test` 和应用内页面/API 为准。
 
+### 5. 相关文档
+
+- 快速启动：`docs/QUICK_START.md`
+- 发布与内容目录说明：`docs/发布使用说明.md`
+- OpenClaw 图生图回调协议：`docs/openclaw-callback.md`
+
 ---
 
 ## 🍪 Cookie 管理指南

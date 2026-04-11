@@ -38,6 +38,12 @@ const routes = [
     meta: { title: '素材库' },
   },
   {
+    path: '/media-library/image-to-image',
+    name: 'MediaImageToImage',
+    component: () => import('./views/MediaImageToImage.vue'),
+    meta: { title: '图生图' },
+  },
+  {
     path: '/publish',
     name: 'Publish',
     component: () => import('./views/Publish.vue'),

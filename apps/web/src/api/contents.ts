@@ -173,10 +173,15 @@ export async function publishContentToMany(
   id: string,
   platform: string,
   accountIds: string[]
-): Promise<ApiResponse<{ results: Array<{ accountId: string; success: boolean; jobId?: string; error?: string }> }>> {
-  const response = await apiClient.post(`/contents/${id}/publish`, {
+): Promise<
+  ApiResponse<{
+    results: Array<{ accountId: string; success: boolean; jobId?: string; error?: string }>;
+  }>
+> {
+  return (await apiClient.post(`/contents/${id}/publish`, {
     platform,
     accountIds,
-  });
-  return response as unknown as ApiResponse;
+  })) as ApiResponse<{
+    results: Array<{ accountId: string; success: boolean; jobId?: string; error?: string }>;
+  }>;
 }

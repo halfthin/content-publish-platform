@@ -48,7 +48,7 @@
           {{ row.cookieUpdatedAt ? formatDate(row.cookieUpdatedAt) : '未配置' }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="280" fixed="right">
+      <el-table-column label="操作" width="340" fixed="right">
         <template #default="{ row }">
           <el-button size="small" @click="editAccount(row)">编辑</el-button>
           <el-button size="small" @click="toggleStatus(row)">
@@ -57,10 +57,53 @@
           <el-button size="small" type="primary" @click="goToCookieConfig(row)">
             Cookie
           </el-button>
+          <el-button size="small" @click="showCallbackDialog(row)">回调</el-button>
           <el-button size="small" type="danger" @click="deleteAccount(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
+
+    <el-dialog v-model="callbackDialogVisible" title="检查登录回调详情" width="760px">
+      <el-skeleton v-if="callbackLoading" :rows="6" animated />
+      <template v-else-if="selectedAccountDetail">
+        <el-descriptions :column="1" border size="small">
+          <el-descriptions-item label="账号名称">
+            {{ selectedAccountDetail.name }}
+          </el-descriptions-item>
+          <el-descriptions-item label="平台">
+            {{ getPlatformName(selectedAccountDetail.platform) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="登录状态">
+            {{ getLoginStatusName(selectedAccountDetail.loginStatus) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="最近回调时间">
+            {{
+              selectedAccountDetail.lastCheckLoginCallback?.updatedAt
+                ? formatDate(selectedAccountDetail.lastCheckLoginCallback.updatedAt)
+                : '暂无'
+            }}
+          </el-descriptions-item>
+          <el-descriptions-item label="最近任务 ID">
+            {{ selectedAccountDetail.lastCheckLoginCallback?.taskId || '-' }}
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <div class="callback-sections">
+          <section class="callback-section">
+            <div class="callback-section-title">原始 payload</div>
+            <pre>{{ formatJson(selectedAccountDetail.lastCheckLoginCallback?.callbackPayload?.raw) }}</pre>
+          </section>
+
+          <section class="callback-section">
+            <div class="callback-section-title">归一化 payload</div>
+            <pre>
+{{ formatJson(selectedAccountDetail.lastCheckLoginCallback?.callbackPayload?.normalized) }}
+            </pre>
+          </section>
+        </div>
+      </template>
+      <el-empty v-else description="暂无回调记录" :image-size="72" />
+    </el-dialog>
 
     <!-- 添加/编辑账号对话框 -->
     <el-dialog
@@ -112,6 +155,7 @@ import {
   type CreateAccountDto,
   createAccount as createAccountApi,
   deleteAccount as deleteAccountApi,
+  getAccount as getAccountApi,
   getAccounts as getAccountsApi,
   toggleAccountStatus as toggleAccountStatusApi,
   type UpdateAccountDto,
@@ -123,12 +167,15 @@ const loading = ref(false);
 const submitting = ref(false);
 const dialogVisible = ref(false);
 const isEdit = ref(false);
+const callbackDialogVisible = ref(false);
+const callbackLoading = ref(false);
 const formRef = ref<FormInstance>();
 
 const filterPlatform = ref<string>('');
 const filterStatus = ref<string>('');
 
 const accounts = ref<Account[]>([]);
+const selectedAccountDetail = ref<Account | null>(null);
 
 const form = reactive<CreateAccountDto & { id?: string }>({
   name: '',
@@ -225,6 +272,23 @@ function goToCookieConfig(account: Account) {
   router.push(`/cookie-config?accountId=${account.id}`);
 }
 
+async function showCallbackDialog(account: Account) {
+  callbackDialogVisible.value = true;
+  callbackLoading.value = true;
+
+  try {
+    selectedAccountDetail.value = await getAccountApi(account.id);
+  } catch (error: unknown) {
+    ElMessage.error(`加载账号回调详情失败：${getErrorMessage(error)}`);
+    selectedAccountDetail.value = {
+      ...account,
+      lastCheckLoginCallback: null,
+    };
+  } finally {
+    callbackLoading.value = false;
+  }
+}
+
 // 提交表单
 async function submitForm() {
   if (!formRef.value) return;
@@ -316,12 +380,21 @@ function formatDate(date: string | Date): string {
   });
 }
 
+function formatJson(value: unknown): string {
+  if (!value) {
+    return '暂无数据';
+  }
+
+  return JSON.stringify(value, null, 2);
+}
+
 void [
   showAddDialog,
   editAccount,
   toggleStatus,
   deleteAccount,
   goToCookieConfig,
+  showCallbackDialog,
   submitForm,
   resetForm,
   getPlatformName,
@@ -329,6 +402,7 @@ void [
   getLoginStatusName,
   getLoginStatusTagType,
   formatDate,
+  formatJson,
 ];
 
 onMounted(() => {
@@ -365,5 +439,36 @@ onMounted(() => {
 
 .filter-bar .el-select {
   width: 160px;
+}
+
+.callback-sections {
+  margin-top: 16px;
+  display: grid;
+  gap: 16px;
+}
+
+.callback-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.callback-section-title {
+  font-weight: 600;
+  color: #303133;
+}
+
+.callback-section pre {
+  margin: 0;
+  padding: 14px;
+  border-radius: 12px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
+  max-height: 320px;
 }
 </style>

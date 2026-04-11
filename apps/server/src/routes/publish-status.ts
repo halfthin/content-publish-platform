@@ -82,6 +82,82 @@ export function setupPublishStatusRoutes() {
 
       // 获取账号的发布历史
       .get(
+        '/account/all',
+        async ({ query }) => {
+          const { limit = '20', offset = '0' } = query;
+
+          try {
+            const publishLogs = await prisma.publishLog.findMany({
+              include: {
+                content: {
+                  select: {
+                    id: true,
+                    title: true,
+                    type: true,
+                    status: true,
+                  },
+                },
+                account: {
+                  select: {
+                    id: true,
+                    name: true,
+                    platform: true,
+                    username: true,
+                  },
+                },
+              },
+              orderBy: {
+                createdAt: 'desc',
+              },
+              take: parseInt(limit, 10),
+              skip: parseInt(offset, 10),
+            });
+
+            const total = await prisma.publishLog.count();
+
+            const logsWithJobId = publishLogs.filter(
+              (log): typeof log & { jobId: string } => typeof log.jobId === 'string'
+            );
+            const jobStates = await Promise.all(
+              logsWithJobId.map(async (log) => ({
+                jobId: log.jobId,
+                state: await getPublishQueue().getJobState(log.jobId),
+              }))
+            );
+            const stateMap = Object.fromEntries(jobStates.map((item) => [item.jobId, item.state]));
+
+            return {
+              success: true,
+              data: {
+                publishLogs: publishLogs.map((log) => ({
+                  ...log,
+                  jobState: log.jobId ? stateMap[log.jobId] : null,
+                })),
+                pagination: {
+                  total,
+                  limit: parseInt(limit, 10),
+                  offset: parseInt(offset, 10),
+                },
+              },
+            };
+          } catch (error) {
+            logger.error('Failed to get all publish logs', { error: String(error) });
+            return {
+              success: false,
+              error: `Failed to get publish logs: ${error}`,
+            };
+          }
+        },
+        {
+          query: t.Object({
+            limit: t.Optional(t.String()),
+            offset: t.Optional(t.String()),
+          }),
+        }
+      )
+
+      // 获取账号的发布历史
+      .get(
         '/account/:accountId',
         async ({ params, query }) => {
           const { accountId } = params;
@@ -249,6 +325,7 @@ export function setupPublishStatusRoutes() {
               {
                 contentId: publishLog.contentId,
                 accountId: publishLog.accountId,
+                publishLogId: publishLog.id,
                 platform: publishLog.platform,
                 content: {
                   title: publishLog.content.title,
@@ -270,6 +347,7 @@ export function setupPublishStatusRoutes() {
               data: {
                 status: 'QUEUED',
                 jobId: job.id,
+                externalTaskId: null,
                 retryCount: { increment: 1 },
                 errorMessage: null,
               },

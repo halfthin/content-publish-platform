@@ -139,14 +139,17 @@ model PublishLog {
   content     Content       @relation(fields: [contentId], references: [id])
   accountId   String
   account     Account       @relation(fields: [accountId], references: [id])
+  jobId       String?
   
   platform    String        // 冗余字段，便于查询
   status      PublishStatus @default(PENDING)
   
   // 发布详情
+  externalTaskId String?
   publishedUrl String?      // 发布后链接
   errorMessage String?      // 错误信息
   errorCode    String?      // 错误码
+  callbackPayload Json?
   retryCount   Int          @default(0)
   maxRetries   Int          @default(3)
   
@@ -158,6 +161,8 @@ model PublishLog {
 
   @@index([contentId])
   @@index([accountId])
+  @@index([jobId])
+  @@index([externalTaskId])
   @@index([status])
   @@index([createdAt])
 }

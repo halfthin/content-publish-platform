@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import type {
   CreateMediaActionInput,
+  DeleteMediaActionResult,
   MediaActionDefinition,
   MediaActionSummary,
   MediaDateTreeYear,
@@ -252,6 +253,18 @@ export const useMediaLibraryStore = defineStore('media-library', () => {
     return result;
   }
 
+  async function retryAction(id: string) {
+    const result = await mediaApi.retryMediaAction(id);
+    await refreshRecentActions();
+    return result;
+  }
+
+  async function deleteAction(id: string): Promise<DeleteMediaActionResult> {
+    const result = await mediaApi.deleteMediaAction(id);
+    await refreshRecentActions();
+    return result;
+  }
+
   function isFavoritePath(path: string) {
     return favorites.value.some((favorite) => favorite.relativePath === path);
   }
@@ -287,6 +300,7 @@ export const useMediaLibraryStore = defineStore('media-library', () => {
     initialize,
     refreshDateTree,
     refreshFavorites,
+    refreshActionDefinitions,
     refreshRecentActions,
     openDate,
     openAdjacentDate,
@@ -297,6 +311,8 @@ export const useMediaLibraryStore = defineStore('media-library', () => {
     renameFavorite,
     toggleFavoritePinned,
     submitAction,
+    retryAction,
+    deleteAction,
     ensurePathLoaded,
     isFavoritePath,
     isDatePath,

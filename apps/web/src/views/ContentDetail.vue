@@ -21,7 +21,7 @@
           <!-- 图片预览 - 缩略图网格 -->
           <div v-if="content?.images && content.images.length > 0" class="image-thumbnail-grid">
             <div
-              v-for="(img, index) in content.images"
+              v-for="(_img, index) in content.images"
               :key="index"
               class="thumbnail-item"
               @click="openImageViewer(index)"
@@ -219,6 +219,7 @@
 </template>
 
 <script setup lang="ts">
+/* biome-ignore-all lint/correctness/noUnusedVariables: Vue <script setup> bindings are consumed by the template. */
 import { ArrowLeft, Loading, Picture, ZoomIn } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { marked } from 'marked';
@@ -258,9 +259,12 @@ const imagePreviewList = computed(() => {
 });
 
 // 重置图片索引当内容变化时
-watch(() => content.value?.id, () => {
-  currentImageIndex.value = 0;
-});
+watch(
+  () => content.value?.id,
+  () => {
+    currentImageIndex.value = 0;
+  }
+);
 
 // 渲染 Markdown
 const renderedMarkdown = computed(() => {

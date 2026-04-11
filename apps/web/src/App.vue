@@ -89,7 +89,13 @@ const route = useRoute();
 const contentStore = useContentStore();
 const wsConnected = ref(false);
 
-const activeMenu = computed(() => route.path);
+const activeMenu = computed(() => {
+  if (route.path.startsWith('/media-library')) {
+    return '/media-library';
+  }
+
+  return route.path;
+});
 
 // WebSocket 消息处理
 function handleWebSocketMessage(message: WebSocketMessage) {

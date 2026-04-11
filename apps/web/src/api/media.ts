@@ -64,6 +64,8 @@ export interface MediaFavoritePath {
   exists: boolean;
 }
 
+export type ImageToImageMode = 'lifestyle' | 'artistic' | 'lookbook' | 'flat_full' | 'flat_detail';
+
 export interface MediaActionFieldDefinition {
   key: string;
   label: string;
@@ -73,10 +75,12 @@ export interface MediaActionFieldDefinition {
 }
 
 export interface MediaActionDefinition {
-  type: 'wx-work-post' | 'wechat-article' | 'notify-photographer';
+  type: 'wx-work-post' | 'wechat-article' | 'image-to-image';
   label: string;
   description: string;
   fields: MediaActionFieldDefinition[];
+  dispatchMethod?: 'POST';
+  dispatchPathname?: string;
 }
 
 export interface MediaActionAssetSnapshot {
@@ -86,14 +90,63 @@ export interface MediaActionAssetSnapshot {
   filename: string;
   parentPath: string;
   mimeType: string;
+  sourcePath: string;
   fileUrl: string;
   thumbUrl: string;
+}
+
+export interface MediaActionResultArtifact {
+  kind: 'image' | 'video' | 'file' | 'directory' | 'url' | 'json' | string;
+  role?: 'generated' | 'published' | 'preview' | 'reference' | 'attachment' | string | null;
+  name?: string | null;
+  url?: string | null;
+  path?: string | null;
+  mimeType?: string | null;
+  meta?: Record<string, unknown> | null;
+}
+
+export interface MediaActionUploadFile {
+  fieldName?: string;
+  originalName?: string;
+  storedName?: string;
+  relativePath?: string;
+  absolutePath?: string;
+  mimeType?: string;
+  size?: number;
+}
+
+export interface MediaActionUploadPayload {
+  provider?: string;
+  fileCount?: number;
+  directory?: string;
+  directoryAbsolutePath?: string;
+  manifestPath?: string;
+  manifestAbsolutePath?: string;
+  files?: MediaActionUploadFile[];
+}
+
+export interface MediaActionCallbackResult {
+  externalId?: string | null;
+  url?: string | null;
+  summary?: string | null;
+  artifacts?: MediaActionResultArtifact[];
+  extra?: Record<string, unknown> | null;
+}
+
+export interface MediaActionCallbackPayload {
+  actionType?: string;
+  status?: string;
+  result?: MediaActionCallbackResult | Record<string, unknown>;
+  timestamp?: string;
+  refs?: {
+    mediaActionId?: string | null;
+  };
 }
 
 export interface MediaActionSummary {
   id: string;
   actionType: MediaActionDefinition['type'];
-  status: 'QUEUED' | 'DISPATCHING' | 'DISPATCHED' | 'RUNNING' | 'SUCCESS' | 'FAILED';
+  status: 'QUEUED' | 'DISPATCHING' | 'DISPATCHED' | 'RUNNING' | 'NEEDS_AUTH' | 'SUCCESS' | 'FAILED';
   operator?: string;
   assets: MediaActionAssetSnapshot[];
   formData: Record<string, unknown>;
@@ -103,7 +156,7 @@ export interface MediaActionSummary {
   };
   externalTaskId?: string;
   error?: string;
-  callbackPayload?: Record<string, unknown>;
+  callbackPayload?: MediaActionCallbackPayload | Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }
@@ -122,12 +175,27 @@ export interface CreateMediaActionInput {
   };
 }
 
+export interface DeleteMediaActionResult {
+  id: string;
+  removedUploadDirectory: string | null;
+}
+
 export function getMediaThumbUrl(assetKey: string): string {
   return `${API_BASE_URL}/media/thumb/${assetKey}`;
 }
 
 export function getMediaFileUrl(assetKey: string): string {
   return `${API_BASE_URL}/media/file/${assetKey}`;
+}
+
+export function getMediaActionUploadFileUrl(actionId: string, relativePath: string): string {
+  const encodedPath = relativePath
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+
+  return `${API_BASE_URL}/media/actions/${encodeURIComponent(actionId)}/uploads/${encodedPath}`;
 }
 
 export async function getMediaRoots(): Promise<MediaRoot[]> {
@@ -197,4 +265,12 @@ export async function createMediaAction(
 
 export async function getMediaAction(id: string): Promise<MediaActionSummary> {
   return (await apiClient.get(`/media/actions/${id}`)) as MediaActionSummary;
+}
+
+export async function retryMediaAction(id: string): Promise<MediaActionSummary> {
+  return (await apiClient.post(`/media/actions/${id}/retry`)) as MediaActionSummary;
+}
+
+export async function deleteMediaAction(id: string): Promise<DeleteMediaActionResult> {
+  return (await apiClient.delete(`/media/actions/${id}`)) as DeleteMediaActionResult;
 }

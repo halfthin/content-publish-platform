@@ -1,13 +1,15 @@
 import { gatewayConfig } from './gateway';
 
-export type MediaActionType = 'wx-work-post' | 'wechat-article' | 'notify-photographer';
+export type MediaActionType = 'wx-work-post' | 'wechat-article' | 'image-to-image';
 export type MediaActionStatus =
   | 'QUEUED'
   | 'DISPATCHING'
   | 'DISPATCHED'
   | 'RUNNING'
+  | 'NEEDS_AUTH'
   | 'SUCCESS'
   | 'FAILED';
+export type ImageToImageMode = 'lifestyle' | 'artistic' | 'lookbook' | 'flat_full' | 'flat_detail';
 
 export interface MediaActionFieldDefinition {
   key: string;
@@ -22,6 +24,8 @@ export interface MediaActionDefinition {
   label: string;
   description: string;
   fields: MediaActionFieldDefinition[];
+  dispatchMethod?: 'POST';
+  dispatchPathname?: string;
 }
 
 export interface MediaActionGatewayConfig {
@@ -30,7 +34,16 @@ export interface MediaActionGatewayConfig {
   fromGatewayToken: string;
   callbackBaseUrl: string;
   routePrefix: string;
+  imageToImageDispatchPath: string;
 }
+
+export const IMAGE_TO_IMAGE_MODES: ImageToImageMode[] = [
+  'lifestyle',
+  'artistic',
+  'lookbook',
+  'flat_full',
+  'flat_detail',
+];
 
 export const MEDIA_ACTION_DEFINITIONS: MediaActionDefinition[] = [
   {
@@ -63,25 +76,10 @@ export const MEDIA_ACTION_DEFINITIONS: MediaActionDefinition[] = [
     ],
   },
   {
-    type: 'notify-photographer',
-    label: '通知摄影师拍摄',
-    description: '把选中的参考图和需求说明提交给摄影师通知服务。',
-    fields: [
-      {
-        key: 'target',
-        label: '摄影师',
-        type: 'text',
-        required: true,
-        placeholder: '请输入摄影师或群组名',
-      },
-      {
-        key: 'requirement',
-        label: '拍摄需求',
-        type: 'textarea',
-        required: true,
-        placeholder: '请输入拍摄需求',
-      },
-    ],
+    type: 'image-to-image',
+    label: '图生图',
+    description: '把参考图与参数提交给 OpenClaw hook，并等待回调更新任务结果。',
+    fields: [],
   },
 ];
 
@@ -93,5 +91,7 @@ export function getMediaActionGatewayConfig(): MediaActionGatewayConfig {
       process.env.MEDIA_ACTION_FROM_GATEWAY_TOKEN || gatewayConfig.fromGatewayToken || '',
     callbackBaseUrl: process.env.API_BASE_URL || 'http://localhost:3000',
     routePrefix: process.env.MEDIA_ACTION_GATEWAY_ROUTE_PREFIX || '/webhooks/cpp/media-actions',
+    imageToImageDispatchPath:
+      process.env.MEDIA_ACTION_IMAGE_TO_IMAGE_DISPATCH_PATH || '/webhooks/cpp/oc/vd-shoot',
   };
 }

@@ -16,6 +16,7 @@ const logger = createLogger('publish-queue');
 export interface PublishJobData {
   contentId: string;
   accountId: string;
+  publishLogId?: string;
   platform: 'xiaohongshu' | 'weibo' | 'douyin' | 'bilibili' | 'wechat';
   content: {
     title: string;
@@ -718,6 +719,7 @@ export class PublishQueue {
       platform,
       contentId,
       accountId,
+      publishLogId: job.data.publishLogId,
       contentPath: content.basePath,
       taskId: job.data.taskId,
       cookies,
@@ -741,10 +743,23 @@ export class PublishQueue {
 
     // Gateway 接受任务，任务将通过 webhook 回调通知结果
     // 更新 PublishLog 状态为 RUNNING
-    await prisma.publishLog.updateMany({
-      where: { contentId, accountId },
-      data: { status: 'RUNNING' },
-    });
+    if (job.data.publishLogId) {
+      await prisma.publishLog.update({
+        where: { id: job.data.publishLogId },
+        data: {
+          status: 'RUNNING',
+          externalTaskId: result.taskId,
+        },
+      });
+    } else {
+      await prisma.publishLog.updateMany({
+        where: { contentId, accountId },
+        data: {
+          status: 'RUNNING',
+          externalTaskId: result.taskId,
+        },
+      });
+    }
 
     logger.info('Gateway publish task accepted', {
       contentId,

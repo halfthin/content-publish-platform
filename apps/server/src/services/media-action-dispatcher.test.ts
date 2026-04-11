@@ -17,6 +17,7 @@ const summary: MediaActionSummary = {
       filename: '001.png',
       parentPath: '2026/04/09/A款',
       mimeType: 'image/png',
+      sourcePath: '/mnt/dapai-s/2026/04/09/A款/001.png',
       fileUrl: 'http://cpp.local/api/media/file/asset-001',
       thumbUrl: 'http://cpp.local/api/media/thumb/asset-001',
     },
@@ -33,6 +34,53 @@ const summary: MediaActionSummary = {
   updatedAt: '2026-04-09T09:00:00.000Z',
 };
 
+const imageToImageSummary: MediaActionSummary = {
+  id: 'job-img-001',
+  actionType: 'image-to-image',
+  status: 'DISPATCHING',
+  assets: [
+    {
+      rootId: 'dapai',
+      relativePath: '2026/04/09/A款/001.png',
+      assetKey: 'asset-001',
+      filename: '001.png',
+      parentPath: '2026/04/09/A款',
+      mimeType: 'image/png',
+      sourcePath: '/mnt/dapai-s/2026/04/09/A款/001.png',
+      fileUrl: 'http://cpp.local/api/media/file/asset-001',
+      thumbUrl: 'http://cpp.local/api/media/thumb/asset-001',
+    },
+    {
+      rootId: 'dapai',
+      relativePath: '2026/04/09/B款/010.png',
+      assetKey: 'asset-010',
+      filename: '010.png',
+      parentPath: '2026/04/09/B款',
+      mimeType: 'image/png',
+      sourcePath: '/mnt/dapai-s/2026/04/09/B款/010.png',
+      fileUrl: 'http://cpp.local/api/media/file/asset-010',
+      thumbUrl: 'http://cpp.local/api/media/thumb/asset-010',
+    },
+  ],
+  formData: {
+    mode: 'lookbook',
+    person: '模特A',
+    productCode: 'SKU-001',
+    scene: '影棚',
+    style: '韩系',
+    mood: '清新',
+    count: '3',
+    size: '1536x2048',
+    model: 'flux',
+    dryRun: true,
+    description: '这组照片要体现悠闲的都市下午茶氛围。',
+    referenceFace: '/mnt/ref/face.png',
+    referenceBody: 'https://example.com/body.png',
+  },
+  createdAt: '2026-04-09T09:00:00.000Z',
+  updatedAt: '2026-04-09T09:00:00.000Z',
+};
+
 describe('media-action-dispatcher', () => {
   beforeEach(() => {
     fetchMock.mockClear();
@@ -43,6 +91,7 @@ describe('media-action-dispatcher', () => {
     delete process.env.MEDIA_ACTION_TO_GATEWAY_TOKEN;
     delete process.env.MEDIA_ACTION_FROM_GATEWAY_TOKEN;
     delete process.env.MEDIA_ACTION_GATEWAY_ROUTE_PREFIX;
+    delete process.env.MEDIA_ACTION_IMAGE_TO_IMAGE_DISPATCH_PATH;
     delete process.env.API_BASE_URL;
   });
 
@@ -92,6 +141,9 @@ describe('media-action-dispatcher', () => {
     const payload = JSON.parse(String(requestInit.body)) as Record<string, unknown>;
     expect(payload.jobId).toBe('job-001');
     expect(payload.source).toBe('content-publish-platform/media-library');
+    expect(payload.refs).toEqual({
+      mediaActionId: 'job-001',
+    });
     expect(payload.callback).toEqual({
       url: 'http://cpp.local/api/webhook/media-actions/wx-work-post/result',
       token: 'token-from-gateway',
@@ -146,5 +198,95 @@ describe('media-action-dispatcher', () => {
       accepted: false,
       error: 'Gateway returned 400: bad request',
     });
+  });
+
+  it('builds the expected image-to-image payload for gateway hooks', async () => {
+    fetchMock.mockImplementationOnce(async () => {
+      return new Response(JSON.stringify({ taskId: 'img-task-123' }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+    });
+
+    const dispatcher = createHttpMediaActionDispatcher({
+      fetchImpl: fetchMock as typeof fetch,
+      config: {
+        url: 'http://gateway.local',
+        toGatewayToken: 'token-to-gateway',
+        fromGatewayToken: 'token-from-gateway',
+        callbackBaseUrl: 'http://cpp.local',
+      },
+    });
+
+    const result = await dispatcher.dispatch(imageToImageSummary);
+
+    expect(result).toEqual({
+      accepted: true,
+      externalTaskId: 'img-task-123',
+    });
+
+    const [url, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://gateway.local/webhooks/cpp/oc/vd-shoot');
+
+    const payload = JSON.parse(String(requestInit.body)) as Record<string, unknown>;
+    expect(payload).toEqual({
+      taskId: 'job-img-001',
+      refs: {
+        mediaActionId: 'job-img-001',
+      },
+      callback: {
+        url: 'http://cpp.local/api/webhook/media-actions/image-to-image/result',
+        token: 'token-from-gateway',
+      },
+      mode: 'lookbook',
+      person: '模特A',
+      productCode: 'SKU-001',
+      scene: '影棚',
+      style: '韩系',
+      mood: '清新',
+      count: 3,
+      size: '1536x2048',
+      model: 'flux',
+      dryRun: true,
+      description: '这组照片要体现悠闲的都市下午茶氛围。',
+      referenceImages: {
+        product: '/mnt/dapai-s/2026/04/09/A款/001.png',
+        outfit: '/mnt/dapai-s/2026/04/09/B款/010.png',
+        face: '/mnt/ref/face.png',
+        body: 'https://example.com/body.png',
+      },
+    });
+  });
+
+  it('allows overriding the image-to-image dispatch path', async () => {
+    fetchMock.mockImplementationOnce(async () => {
+      return new Response(JSON.stringify({ taskId: 'img-task-456' }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+    });
+
+    const dispatcher = createHttpMediaActionDispatcher({
+      fetchImpl: fetchMock as typeof fetch,
+      config: {
+        url: 'http://gateway.local',
+        callbackBaseUrl: 'http://cpp.local',
+        imageToImageDispatchPath: '/custom/vd-shoot',
+      },
+    });
+
+    const result = await dispatcher.dispatch(imageToImageSummary);
+
+    expect(result).toEqual({
+      accepted: true,
+      externalTaskId: 'img-task-456',
+    });
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://gateway.local/custom/vd-shoot');
   });
 });

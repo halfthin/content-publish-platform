@@ -107,8 +107,11 @@
             {{ formatDate(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="100" fixed="right">
+        <el-table-column label="操作" width="170" fixed="right">
           <template #default="{ row }">
+            <el-button v-if="row.callbackPayload" link type="primary" @click="showCallbackPayload(row)">
+              回调
+            </el-button>
             <el-button
               v-if="row.status === 'FAILED'"
               link
@@ -135,6 +138,38 @@
         @current-change="handlePageChange"
       />
     </div>
+
+    <el-dialog v-model="callbackDialogVisible" title="发布回调详情" width="760px">
+      <template v-if="selectedPublishLog">
+        <el-descriptions :column="1" border size="small">
+          <el-descriptions-item label="内容标题">
+            {{ selectedPublishLog.content?.title || '-' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="账号">
+            {{ selectedPublishLog.account?.name || '-' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="状态">
+            {{ getStatusLabel(selectedPublishLog.status) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="外部任务 ID">
+            {{ selectedPublishLog.externalTaskId || '-' }}
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <div class="callback-sections">
+          <section class="callback-section">
+            <div class="callback-section-title">原始 payload</div>
+            <pre>{{ formatJson(getRawCallbackPayload(selectedPublishLog)) }}</pre>
+          </section>
+
+          <section class="callback-section">
+            <div class="callback-section-title">归一化 payload</div>
+            <pre>{{ formatJson(getNormalizedCallbackPayload(selectedPublishLog)) }}</pre>
+          </section>
+        </div>
+      </template>
+      <el-empty v-else description="暂无回调详情" :image-size="72" />
+    </el-dialog>
   </div>
 </template>
 
@@ -163,6 +198,8 @@ const stats = ref<PublishStats>({
 const publishLogs = ref<PublishLog[]>([]);
 const loading = ref(false);
 const retryingIds = ref<string[]>([]);
+const callbackDialogVisible = ref(false);
+const selectedPublishLog = ref<PublishLog | null>(null);
 
 // 分页
 const currentPage = ref(1);
@@ -189,14 +226,16 @@ const platformTagTypes: Record<string, 'primary' | 'success' | 'warning' | 'dang
 // 状态标签
 const statusLabels: Record<string, string> = {
   QUEUED: '等待中',
-  PUBLISHING: '发布中',
+  RUNNING: '执行中',
+  NEEDS_AUTH: '需要认证',
   SUCCESS: '成功',
   FAILED: '失败',
 };
 
 const statusTagTypes: Record<string, 'primary' | 'success' | 'warning' | 'danger' | 'info'> = {
   QUEUED: 'info',
-  PUBLISHING: 'warning',
+  RUNNING: 'warning',
+  NEEDS_AUTH: 'warning',
   SUCCESS: 'success',
   FAILED: 'danger',
 };
@@ -273,6 +312,11 @@ function refreshData() {
   loadPublishLogs();
 }
 
+function showCallbackPayload(log: PublishLog) {
+  selectedPublishLog.value = log;
+  callbackDialogVisible.value = true;
+}
+
 // 重试发布
 async function handleRetry(log: PublishLog) {
   if (retryingIds.value.includes(log.id)) return;
@@ -302,6 +346,42 @@ function handleSizeChange(size: number) {
   loadPublishLogs();
 }
 
+function getRawCallbackPayload(log: PublishLog): Record<string, unknown> | null {
+  if (!log.callbackPayload || Array.isArray(log.callbackPayload)) {
+    return null;
+  }
+
+  const payload = log.callbackPayload as Record<string, unknown>;
+  const raw = payload.raw;
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+
+  return payload;
+}
+
+function getNormalizedCallbackPayload(log: PublishLog): Record<string, unknown> | null {
+  if (!log.callbackPayload || Array.isArray(log.callbackPayload)) {
+    return null;
+  }
+
+  const payload = log.callbackPayload as Record<string, unknown>;
+  const normalized = payload.normalized;
+  if (normalized && typeof normalized === 'object' && !Array.isArray(normalized)) {
+    return normalized as Record<string, unknown>;
+  }
+
+  return null;
+}
+
+function formatJson(value: unknown): string {
+  if (!value) {
+    return '暂无数据';
+  }
+
+  return JSON.stringify(value, null, 2);
+}
+
 onMounted(() => {
   loadStats();
   loadPublishLogs();
@@ -315,9 +395,13 @@ void [
   getStatusTagType,
   getJobStateTagType,
   formatDate,
+  formatJson,
+  getRawCallbackPayload,
+  getNormalizedCallbackPayload,
   handleRetry,
   handlePageChange,
   handleSizeChange,
+  showCallbackPayload,
 ];
 </script>
 
@@ -397,6 +481,37 @@ void [
   margin-top: 20px;
   display: flex;
   justify-content: flex-end;
+}
+
+.callback-sections {
+  margin-top: 16px;
+  display: grid;
+  gap: 16px;
+}
+
+.callback-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.callback-section-title {
+  font-weight: 600;
+  color: #303133;
+}
+
+.callback-section pre {
+  margin: 0;
+  padding: 14px;
+  border-radius: 12px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
+  max-height: 320px;
 }
 
 .publish-link {

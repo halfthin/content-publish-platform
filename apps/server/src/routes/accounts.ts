@@ -3,6 +3,10 @@ import { Elysia, t } from 'elysia';
 import { chromium } from 'playwright';
 import { createLogger, verifyLogger } from '../config/logger';
 import { prisma } from '../config/prisma';
+import {
+  type AccountCheckLoginCallbackStore,
+  createRedisAccountCheckLoginCallbackStore,
+} from '../services/account-check-login-callbacks.service';
 import { getGatewayService } from '../services/gateway.service';
 import {
   normalizeCookiesForBrowser,
@@ -12,6 +16,10 @@ import {
 import { decryptCookies, encryptCookies } from '../utils/encryption';
 
 const logger = createLogger('accounts-route');
+
+interface SetupAccountsRoutesOptions {
+  accountCheckLoginCallbackStore?: AccountCheckLoginCallbackStore;
+}
 
 function normalizePlatform(platform: string): SupportedPlatform | undefined {
   if (platform === 'xiaohongshu' || platform === 'weibo' || platform === 'douyin') {
@@ -84,7 +92,10 @@ async function detectProfileLinks(
 /**
  * 账号管理 API 路由
  */
-export function setupAccountsRoutes() {
+export function setupAccountsRoutes(options: SetupAccountsRoutesOptions = {}) {
+  const accountCheckLoginCallbackStore =
+    options.accountCheckLoginCallbackStore || createRedisAccountCheckLoginCallbackStore();
+
   return (
     new Elysia({ prefix: '/api/accounts' })
       // 获取账号列表
@@ -359,9 +370,14 @@ export function setupAccountsRoutes() {
           };
         }
 
+        const lastCheckLoginCallback = await accountCheckLoginCallbackStore.get(account.id);
+
         return {
           success: true,
-          data: account,
+          data: {
+            ...account,
+            lastCheckLoginCallback,
+          },
         };
       })
 

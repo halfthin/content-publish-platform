@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
+  getMediaActionGatewayConfig,
+  IMAGE_TO_IMAGE_MODES,
   MEDIA_ACTION_DEFINITIONS,
   type MediaActionDefinition,
   type MediaActionStatus,
@@ -24,6 +26,7 @@ export interface MediaActionAssetSnapshot extends MediaActionAssetInput {
   filename: string;
   parentPath: string;
   mimeType: string;
+  sourcePath: string;
   fileUrl: string;
   thumbUrl: string;
 }
@@ -61,10 +64,13 @@ export interface MediaActionCallbackPayload {
   jobId?: string;
   taskId?: string;
   actionType: string;
-  status: 'queued' | 'running' | 'success' | 'failed';
+  status: 'queued' | 'running' | 'success' | 'failed' | 'needs-auth';
   error?: string;
   result?: Record<string, unknown>;
   timestamp?: string;
+  refs?: {
+    mediaActionId?: string | null;
+  };
 }
 
 export interface MediaActionDispatchResult {
@@ -87,6 +93,7 @@ export interface MediaActionStore {
   listRecent(limit?: number): Promise<MediaActionSummary[]>;
   mapExternalTaskId(externalTaskId: string, jobId: string): Promise<void>;
   getJobIdByExternalTaskId(externalTaskId: string): Promise<string | null>;
+  delete(id: string): Promise<MediaActionSummary | null>;
 }
 
 class RedisMediaActionStore implements MediaActionStore {
@@ -125,6 +132,24 @@ class RedisMediaActionStore implements MediaActionStore {
 
   async getJobIdByExternalTaskId(externalTaskId: string): Promise<string | null> {
     return getRedisClient().get(`${EXTERNAL_KEY_PREFIX}${externalTaskId}`);
+  }
+
+  async delete(id: string): Promise<MediaActionSummary | null> {
+    const redis = getRedisClient();
+    const key = `${SUMMARY_KEY_PREFIX}${id}`;
+    const raw = await redis.get(key);
+    if (!raw) {
+      return null;
+    }
+
+    const summary = JSON.parse(raw) as MediaActionSummary;
+    await redis.del(key);
+    await redis.lrem(RECENT_KEY, 0, id);
+    if (summary.externalTaskId) {
+      await redis.del(`${EXTERNAL_KEY_PREFIX}${summary.externalTaskId}`);
+    }
+
+    return summary;
   }
 }
 
@@ -175,6 +200,23 @@ export function createInMemoryMediaActionStore(
     async getJobIdByExternalTaskId(externalTaskId) {
       return externalMap.get(externalTaskId) || null;
     },
+    async delete(id) {
+      const record = records.get(id);
+      if (!record) {
+        return null;
+      }
+
+      records.delete(id);
+      const existingIndex = recentIds.indexOf(id);
+      if (existingIndex !== -1) {
+        recentIds.splice(existingIndex, 1);
+      }
+      if (record.externalTaskId) {
+        externalMap.delete(record.externalTaskId);
+      }
+
+      return { ...record };
+    },
   };
 }
 
@@ -194,6 +236,30 @@ function getActionDefinition(actionType: string): MediaActionDefinition {
   return definition;
 }
 
+function normalizeOptionalString(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function validateActionInput(input: CreateMediaActionInput) {
+  if (input.actionType !== 'image-to-image') {
+    return;
+  }
+
+  const mode = normalizeOptionalString(input.formData?.mode);
+  if (!mode) {
+    throw new MediaLibraryError('INVALID_PATH', '图生图模式 mode 必填', 400);
+  }
+
+  if (!IMAGE_TO_IMAGE_MODES.includes(mode as (typeof IMAGE_TO_IMAGE_MODES)[number])) {
+    throw new MediaLibraryError('INVALID_PATH', `Unsupported image-to-image mode: ${mode}`, 400);
+  }
+}
+
 function buildAssetUrls(assetKey: string) {
   const baseUrl = process.env.API_BASE_URL || 'http://localhost:50000';
   return {
@@ -202,11 +268,17 @@ function buildAssetUrls(assetKey: string) {
   };
 }
 
+function canRetryAction(status: MediaActionStatus): boolean {
+  return status === 'FAILED' || status === 'NEEDS_AUTH';
+}
+
 export interface MediaActionsService {
   getDefinitions(): MediaActionDefinition[];
   submit(input: CreateMediaActionInput): Promise<MediaActionSummary>;
   getAction(id: string): Promise<MediaActionSummary | null>;
   listRecent(limit?: number): Promise<MediaActionSummary[]>;
+  retryAction(id: string): Promise<MediaActionSummary>;
+  deleteAction(id: string): Promise<MediaActionSummary>;
   updateStatus(
     id: string,
     status: MediaActionStatus,
@@ -225,7 +297,17 @@ export function createMediaActionsService(options: {
 
   return {
     getDefinitions() {
-      return MEDIA_ACTION_DEFINITIONS;
+      const gatewayConfig = getMediaActionGatewayConfig();
+
+      return MEDIA_ACTION_DEFINITIONS.map((definition) =>
+        definition.type === 'image-to-image'
+          ? {
+              ...definition,
+              dispatchMethod: 'POST' as const,
+              dispatchPathname: gatewayConfig.imageToImageDispatchPath,
+            }
+          : definition
+      );
     },
 
     async submit(input) {
@@ -233,6 +315,7 @@ export function createMediaActionsService(options: {
       if (!input.assets || input.assets.length === 0) {
         throw new MediaLibraryError('INVALID_PATH', 'At least one image is required', 400);
       }
+      validateActionInput(input);
 
       const enrichedAssets = await Promise.all(
         input.assets.map(async (assetInput) => {
@@ -246,6 +329,7 @@ export function createMediaActionsService(options: {
             filename: asset.filename,
             parentPath: asset.parentPath,
             mimeType: asset.mimeType,
+            sourcePath: asset.absolutePath,
             ...buildAssetUrls(asset.assetKey),
           } satisfies MediaActionAssetSnapshot;
         })
@@ -277,6 +361,41 @@ export function createMediaActionsService(options: {
       return store.listRecent(limit);
     },
 
+    async retryAction(id) {
+      const current = await store.get(id);
+      if (!current) {
+        throw new MediaLibraryError('FILE_NOT_FOUND', 'Media action not found', 404);
+      }
+
+      if (!canRetryAction(current.status)) {
+        throw new MediaLibraryError(
+          'INVALID_PATH',
+          'Only FAILED or NEEDS_AUTH media actions can be retried',
+          400
+        );
+      }
+
+      return this.submit({
+        actionType: current.actionType,
+        operator: current.operator,
+        assets: current.assets.map((asset) => ({
+          rootId: asset.rootId,
+          relativePath: asset.relativePath,
+        })),
+        formData: current.formData,
+        context: current.context,
+      });
+    },
+
+    async deleteAction(id) {
+      const deleted = await store.delete(id);
+      if (!deleted) {
+        throw new MediaLibraryError('FILE_NOT_FOUND', 'Media action not found', 404);
+      }
+
+      return deleted;
+    },
+
     async updateStatus(id, status, extra = {}) {
       const current = await store.get(id);
       if (!current) {
@@ -299,6 +418,7 @@ export function createMediaActionsService(options: {
     async handleCallback(payload) {
       const jobId =
         payload.jobId ||
+        payload.refs?.mediaActionId ||
         (payload.taskId ? await store.getJobIdByExternalTaskId(payload.taskId) : null);
       if (!jobId) {
         throw new MediaLibraryError('FILE_NOT_FOUND', 'Media action not found for callback', 404);
@@ -307,6 +427,7 @@ export function createMediaActionsService(options: {
       const statusMap: Record<MediaActionCallbackPayload['status'], MediaActionStatus> = {
         queued: 'DISPATCHED',
         running: 'RUNNING',
+        'needs-auth': 'NEEDS_AUTH',
         success: 'SUCCESS',
         failed: 'FAILED',
       };
@@ -319,6 +440,7 @@ export function createMediaActionsService(options: {
           status: payload.status,
           result: payload.result,
           timestamp: payload.timestamp,
+          refs: payload.refs,
         },
       });
     },

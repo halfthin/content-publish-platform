@@ -8,9 +8,17 @@ export interface PublishLog {
   accountId: string;
   platform: string;
   status: string;
+  externalTaskId?: string | null;
   publishedUrl?: string;
   errorMessage?: string;
   errorCode?: string;
+  callbackPayload?:
+    | {
+        raw?: Record<string, unknown>;
+        normalized?: Record<string, unknown>;
+      }
+    | Record<string, unknown>
+    | null;
   retryCount: number;
   jobId?: string;
   jobState?: string;

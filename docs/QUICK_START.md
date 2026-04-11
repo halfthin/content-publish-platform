@@ -5,6 +5,11 @@
 - ✅ 前端服务已启动：http://localhost:50000
 - ⚠️ 后端服务需要 Redis 支持
 
+## 📚 相关文档
+
+- 发布与内容目录说明：`docs/发布使用说明.md`
+- OpenClaw 图生图回调协议：`docs/openclaw-callback.md`
+
 ---
 
 ## 📝 立即使用（前端）
