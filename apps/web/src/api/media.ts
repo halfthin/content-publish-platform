@@ -75,7 +75,7 @@ export interface MediaActionFieldDefinition {
 }
 
 export interface MediaActionDefinition {
-  type: 'wx-work-post' | 'wechat-article' | 'image-to-image';
+  type: 'wx-work-post' | 'wechat-article' | 'image-to-image' | 'image-recognition';
   label: string;
   description: string;
   fields: MediaActionFieldDefinition[];

@@ -378,15 +378,27 @@
           </div>
 
           <div class="action-buttons">
-            <el-button
-              v-for="definition in mediaStore.actionDefinitions"
-              :key="definition.type"
-              type="primary"
-              plain
-              :disabled="selectionStore.selectedCount === 0"
-              @click="openActionDialog(definition.type)"
-            >
-              {{ getActionButtonLabel(definition.type) }}
+            <el-dropdown @command="(type: string) => openActionDialog(type as MediaActionDefinition['type'])">
+              <el-button type="primary" :disabled="selectionStore.selectedCount === 0">
+                动作派发 <el-icon class="el-icon--right"><arrow-down /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item
+                    v-for="definition in mediaStore.actionDefinitions"
+                    :key="definition.type"
+                    :command="definition.type"
+                  >
+                    {{ getActionButtonLabel(definition.type) }}
+                  </el-dropdown-item>
+                  <el-dropdown-item command="image-recognition">
+                    图片识别
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+            <el-button @click="selectionStore.clearSelections()" :disabled="selectionStore.selectedCount === 0">
+              清空
             </el-button>
           </div>
 
@@ -495,6 +507,50 @@
       </template>
     </el-dialog>
 
+    <!-- 图片识别对话框 -->
+    <el-dialog v-model="imageRecognitionVisible" title="图片识别" width="600px">
+      <el-form label-width="100px">
+        <el-form-item label="选中的图片">
+          <div class="recognition-images">
+            <div
+              v-for="item in selectionStore.selectedItems"
+              :key="item.assetKey"
+              class="recognition-image-item"
+            >
+              <img :src="item.thumbUrl" :alt="item.filename" class="recognition-thumb" />
+              <div class="recognition-image-name">{{ item.filename }}</div>
+            </div>
+          </div>
+          <div class="recognition-count">共 {{ selectionStore.selectedCount }} 张图片</div>
+        </el-form-item>
+        <el-form-item label="操作人">
+          <el-input v-model="imageRecognitionForm.operator" placeholder="可选，记录是谁发起的" />
+        </el-form-item>
+        <el-form-item label="提示词覆盖">
+          <el-input
+            v-model="imageRecognitionForm.promptOverride"
+            type="textarea"
+            :rows="3"
+            placeholder="可选，临时覆盖默认提示词"
+          />
+        </el-form-item>
+        <el-form-item label="识别方式">
+          <el-switch
+            v-model="imageRecognitionForm.useApiMode"
+            active-text="API 识别"
+            inactive-text="浏览器识别"
+            :disabled="true"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="imageRecognitionVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submittingAction" @click="submitImageRecognitionAction">
+          提交识别
+        </el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog
       v-model="previewDialogVisible"
       :title="previewCurrentItem ? `${previewSectionTitle} · ${previewCurrentItem.filename}` : '图片预览'"
@@ -542,7 +598,7 @@
 <script setup lang="ts">
 /* biome-ignore-all lint/correctness/noUnusedVariables lint/correctness/noUnusedImports: Vue <script setup> bindings are consumed by the template. */
 
-import { ArrowRight } from '@element-plus/icons-vue';
+import { ArrowDown, ArrowRight } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
@@ -616,6 +672,12 @@ const actionForm = reactive({
   operator: '',
   formData: {} as Record<string, string>,
 });
+const imageRecognitionVisible = ref(false);
+const imageRecognitionForm = reactive({
+  operator: '',
+  promptOverride: '',
+  useApiMode: true,
+});
 const thumbPreloadCache = new Set<string>();
 let selectionAutoScrollFrame: number | null = null;
 let selectionPointerDragState: {
@@ -623,10 +685,11 @@ let selectionPointerDragState: {
   pointerId: number;
   startY: number;
 } | null = null;
-const actionButtonLabelMap: Record<MediaActionDefinition['type'], string> = {
+const actionButtonLabelMap: Record<string, string> = {
   'wx-work-post': '企业微信',
   'wechat-article': '公众号',
   'image-to-image': '图生图',
+  'image-recognition': '图片识别',
 };
 
 const dateTreeNodes = computed<DateTreeNode[]>(() => {
@@ -1295,6 +1358,14 @@ function openActionDialog(actionType: MediaActionDefinition['type']) {
     return;
   }
 
+  if (actionType === 'image-recognition') {
+    imageRecognitionForm.operator = '';
+    imageRecognitionForm.promptOverride = '';
+    imageRecognitionForm.useApiMode = true;
+    imageRecognitionVisible.value = true;
+    return;
+  }
+
   activeActionType.value = actionType;
   actionForm.operator = '';
   actionForm.formData = {};
@@ -1302,6 +1373,43 @@ function openActionDialog(actionType: MediaActionDefinition['type']) {
     actionForm.formData[field.key] = '';
   }
   actionDialogVisible.value = true;
+}
+
+async function submitImageRecognitionAction() {
+  if (selectionStore.selectedCount === 0) {
+    ElMessage.warning('请先选择至少一张图片');
+    return;
+  }
+
+  submittingAction.value = true;
+  try {
+    const formData: Record<string, unknown> = {
+      promptOverride: imageRecognitionForm.promptOverride || null,
+      useApiMode: imageRecognitionForm.useApiMode,
+    };
+
+    await mediaStore.submitAction({
+      actionType: 'image-recognition',
+      operator: imageRecognitionForm.operator || undefined,
+      assets: selectionStore.selectedItems.map((item) => ({
+        rootId: item.rootId,
+        relativePath: item.relativePath,
+      })),
+      formData,
+      context: {
+        workspaceDatePath: mediaStore.currentDatePath || undefined,
+        favoritePaths: mediaStore.workspacePaths,
+      },
+    });
+
+    imageRecognitionVisible.value = false;
+    ElMessage.success('图片识别任务已提交');
+    await mediaStore.refreshRecentActions();
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '提交失败');
+  } finally {
+    submittingAction.value = false;
+  }
 }
 
 async function submitAction() {
@@ -1645,6 +1753,40 @@ onBeforeUnmount(() => {
   flex: 1;
   overflow-y: auto;
   min-height: 0;
+}
+
+.recognition-images {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.recognition-image-item {
+  text-align: center;
+}
+
+.recognition-thumb {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid #e4e7ed;
+}
+
+.recognition-image-name {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recognition-count {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
 }
 
 .recent-actions {
