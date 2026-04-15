@@ -40,6 +40,14 @@
               <el-icon><PictureFilled /></el-icon>
               <span>素材库</span>
             </el-menu-item>
+            <el-menu-item index="/media-actions">
+              <el-icon><Operation /></el-icon>
+              <span>动作管理</span>
+            </el-menu-item>
+            <el-menu-item index="/media-action-uploads">
+              <el-icon><FolderOpened /></el-icon>
+              <span>回传文件</span>
+            </el-menu-item>
             <el-menu-item index="/publish">
               <el-icon><VideoPlay /></el-icon>
               <span>发布管理</span>
@@ -64,10 +72,13 @@
 
 <script setup lang="ts">
 import {
+  ArrowRight,
   Clock,
   DataLine,
   Document,
+  FolderOpened,
   HomeFilled,
+  Operation,
   PictureFilled,
   PieChart,
   User,
@@ -92,6 +103,9 @@ const wsConnected = ref(false);
 const activeMenu = computed(() => {
   if (route.path.startsWith('/media-library')) {
     return '/media-library';
+  }
+  if (route.path.startsWith('/media-actions')) {
+    return '/media-actions';
   }
 
   return route.path;
@@ -140,7 +154,20 @@ onUnmounted(() => {
   wsService.offMessage(handleWebSocketMessage);
 });
 
-void [activeMenu, Clock, DataLine, Document, HomeFilled, PieChart, PictureFilled, User, VideoPlay];
+void [
+  activeMenu,
+  ArrowRight,
+  Clock,
+  DataLine,
+  Document,
+  FolderOpened,
+  HomeFilled,
+  Operation,
+  PictureFilled,
+  PieChart,
+  User,
+  VideoPlay,
+];
 </script>
 
 <style>
@@ -192,10 +219,9 @@ html, body {
 }
 
 .el-main {
-  padding: 16px;
+  padding: 0;
   background-color: #f5f7fa;
   height: calc(100vh - 60px);
-  overflow-y: auto;
-  scrollbar-gutter: stable;
+  overflow: hidden;
 }
 </style>

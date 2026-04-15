@@ -10,6 +10,7 @@ import {
 import { getRedisClient } from '../config/redis';
 import type { MediaLibraryService } from './media-library.service';
 import { MediaLibraryError } from './media-library.service';
+import { clearMediaActionTimeout } from './media-action-dispatcher';
 
 const SUMMARY_KEY_PREFIX = 'media:action:summary:';
 const EXTERNAL_KEY_PREFIX = 'media:action:external:';
@@ -432,7 +433,8 @@ export function createMediaActionsService(options: {
         failed: 'FAILED',
       };
 
-      return this.updateStatus(jobId, statusMap[payload.status], {
+      const newStatus = statusMap[payload.status];
+      const result = await this.updateStatus(jobId, newStatus, {
         externalTaskId: payload.taskId,
         error: payload.error,
         callbackPayload: {
@@ -443,6 +445,13 @@ export function createMediaActionsService(options: {
           refs: payload.refs,
         },
       });
+
+      // 终态（成功/失败/需要认证）时清除超时 key
+      if (newStatus === 'SUCCESS' || newStatus === 'FAILED' || newStatus === 'NEEDS_AUTH') {
+        await clearMediaActionTimeout(jobId);
+      }
+
+      return result;
     },
   };
 }

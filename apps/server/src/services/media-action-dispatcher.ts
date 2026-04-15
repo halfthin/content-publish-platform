@@ -3,11 +3,15 @@ import {
   getMediaActionGatewayConfig,
   type MediaActionGatewayConfig,
 } from '../config/media-actions';
+import { getRedisClient } from '../config/redis';
 import type {
   MediaActionDispatcher,
   MediaActionDispatchResult,
   MediaActionSummary,
 } from './media-actions.service';
+
+const TIMEOUT_KEY_PREFIX = 'media:action:timeout:';
+const DEFAULT_TIMEOUT_MINUTES = 5;
 
 const logger = createLogger('media-action-dispatcher');
 
@@ -214,6 +218,11 @@ export function createHttpMediaActionDispatcher(
           ? `${config.url}${config.imageToImageDispatchPath}`
           : `${config.url}${config.routePrefix}/${summary.actionType}/dispatch`;
 
+      // 打印请求详情（只针对 image-to-image）
+      if (summary.actionType === 'image-to-image') {
+        logger.info({ dispatchUrl, payload }, 'Image-to-image dispatch request');
+      }
+
       try {
         const response = await fetchImpl(dispatchUrl, {
           method: 'POST',
@@ -239,6 +248,13 @@ export function createHttpMediaActionDispatcher(
 
         const result = await response.json().catch(() => ({}));
 
+        // 派发成功，记录超时 key（2分钟后开始，5分钟超时）
+        const timeoutMinutes = parseInt(process.env.MEDIA_ACTION_TIMEOUT_MINUTES || String(DEFAULT_TIMEOUT_MINUTES), 10);
+        const timeoutStartDelay = 2; // 2分钟后才开始检查
+        const timeoutKey = `${TIMEOUT_KEY_PREFIX}${summary.id}`;
+        const redis = getRedisClient();
+        await redis.setex(timeoutKey, (timeoutMinutes + timeoutStartDelay) * 60, 'pending');
+
         return {
           accepted: true,
           externalTaskId: extractExternalTaskId(result) || summary.id,
@@ -253,4 +269,21 @@ export function createHttpMediaActionDispatcher(
       }
     },
   };
+}
+
+/**
+ * 清除 media action 的超时 key（回调成功时调用）
+ */
+export async function clearMediaActionTimeout(jobId: string): Promise<void> {
+  const redis = getRedisClient();
+  await redis.del(`${TIMEOUT_KEY_PREFIX}${jobId}`);
+}
+
+/**
+ * 获取已超时的 media action jobId 列表
+ */
+export async function getTimedOutMediaActions(): Promise<string[]> {
+  const redis = getRedisClient();
+  const keys = await redis.keys(`${TIMEOUT_KEY_PREFIX}*`);
+  return keys.map((key) => key.replace(TIMEOUT_KEY_PREFIX, ''));
 }

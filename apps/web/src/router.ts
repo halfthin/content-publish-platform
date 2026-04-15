@@ -61,6 +61,18 @@ const routes = [
     component: () => import('./views/Scheduled.vue'),
     meta: { title: '定时任务' },
   },
+  {
+    path: '/media-actions',
+    name: 'MediaActions',
+    component: () => import('./views/MediaActions.vue'),
+    meta: { title: '动作管理' },
+  },
+  {
+    path: '/media-action-uploads',
+    name: 'MediaActionUploads',
+    component: () => import('./views/MediaActionUploads.vue'),
+    meta: { title: '回传文件' },
+  },
 ];
 
 const router = createRouter({

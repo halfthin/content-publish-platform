@@ -274,3 +274,80 @@ export async function retryMediaAction(id: string): Promise<MediaActionSummary> 
 export async function deleteMediaAction(id: string): Promise<DeleteMediaActionResult> {
   return (await apiClient.delete(`/media/actions/${id}`)) as DeleteMediaActionResult;
 }
+
+// ========== 上传文件浏览 API ==========
+
+export interface MediaActionUploadRoot {
+  id: string;
+  label: string;
+  path: string;
+}
+
+export interface MediaActionUploadDateTreeYear {
+  year: string;
+  label: string;
+  path: string;
+  months: Array<{
+    month: string;
+    label: string;
+    path: string;
+    days: Array<{
+      day: string;
+      label: string;
+      path: string;
+    }>;
+  }>;
+}
+
+export interface MediaActionUploadItem {
+  filename: string;
+  relativePath: string;
+  parentPath: string;
+  size: number;
+  modifiedAt: string;
+  mimeType: string;
+}
+
+export interface MediaActionUploadItemsResponse {
+  items: MediaActionUploadItem[];
+  nextCursor: string | null;
+}
+
+export async function getMediaActionUploadRoots(): Promise<MediaActionUploadRoot[]> {
+  const response = (await apiClient.get('/media/actions/uploads/roots')) as {
+    success: boolean;
+    data: MediaActionUploadRoot[];
+  };
+  return response.data;
+}
+
+export async function getMediaActionUploadTree(
+  provider: string,
+  path: string = ''
+): Promise<MediaActionUploadDateTreeYear[]> {
+  const response = (await apiClient.get('/media/actions/uploads/tree', {
+    params: { provider, path },
+  })) as { success: boolean; data: MediaActionUploadDateTreeYear[] };
+  return response.data;
+}
+
+export async function getMediaActionUploadItems(params: {
+  provider: string;
+  path: string;
+  recursive?: boolean;
+  limit?: number;
+  cursor?: string;
+}): Promise<MediaActionUploadItemsResponse> {
+  const response = (await apiClient.get('/media/actions/uploads/items', { params })) as {
+    success: boolean;
+    data: MediaActionUploadItemsResponse;
+  };
+  return response.data;
+}
+
+export async function deleteMediaActionUploadFile(
+  provider: string,
+  relativePath: string
+): Promise<void> {
+  await apiClient.delete(`/media/actions/uploads/${provider}/${relativePath}`);
+}

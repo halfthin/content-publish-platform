@@ -1,12 +1,14 @@
 import { cors } from '@elysiajs/cors';
 import { Elysia } from 'elysia';
-import { logger } from '../config/logger';
+import { createLogger } from '../config/logger';
 import { setupAccountsRoutes } from './accounts';
 import { setupContentsRoutes } from './contents';
 import { setupMediaRoutes } from './media';
 import { setupMediaActionRoutes } from './media-actions';
 import { setupPublishStatusRoutes } from './publish-status';
 import { setupWebhookRoutes } from './webhook';
+
+const requestLogger = createLogger('request');
 
 export function setupRoutes() {
   return (
@@ -54,7 +56,7 @@ export function setupRoutes() {
         if (path === '/ws' || path.startsWith('/ws/')) {
           return;
         }
-        logger.debug({ path, method }, 'Request received');
+        requestLogger.debug({ path, method }, 'Request received');
       })
   );
 }

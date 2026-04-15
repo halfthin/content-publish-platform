@@ -10,6 +10,12 @@ import {
   type MediaActionsService,
 } from '../services/media-actions.service';
 import { createMediaLibraryService, MediaLibraryError } from '../services/media-library.service';
+import {
+  deleteUploadFile,
+  getUploadDateTree,
+  getUploadItems,
+  getUploadRoots,
+} from '../services/media-upload-browser.service';
 
 const logger = createLogger('media-actions-route');
 
@@ -348,6 +354,73 @@ export function setupMediaActionRoutes(options: SetupMediaActionRoutesOptions = 
         params: t.Object({
           id: t.String(),
           '*': t.Any(),
+        }),
+      }
+    )
+    // ========== 上传文件浏览 API ==========
+    .get('/uploads/roots', async () => {
+      const roots = await getUploadRoots();
+      return { success: true, data: roots };
+    })
+    .get(
+      '/uploads/tree',
+      async ({ query }) => {
+        const provider = (query as { provider?: string }).provider || 'openclaw';
+        const path = (query as { path?: string }).path || '';
+        const tree = await getUploadDateTree(provider, path);
+        return { success: true, data: tree };
+      },
+      {
+        query: t.Object({
+          provider: t.Optional(t.String()),
+          path: t.Optional(t.String()),
+        }),
+      }
+    )
+    .get(
+      '/uploads/items',
+      async ({ query }) => {
+        const { provider, path, recursive, limit, cursor } = query as {
+          provider?: string;
+          path?: string;
+          recursive?: string;
+          limit?: string;
+          cursor?: string;
+        };
+        const result = await getUploadItems(provider || 'openclaw', path || '', {
+          recursive: recursive === 'true',
+          limit: limit ? parseInt(limit, 10) : 120,
+          cursor,
+        });
+        return { success: true, data: result };
+      },
+      {
+        query: t.Object({
+          provider: t.Optional(t.String()),
+          path: t.Optional(t.String()),
+          recursive: t.Optional(t.String()),
+          limit: t.Optional(t.String()),
+          cursor: t.Optional(t.String()),
+        }),
+      }
+    )
+    .delete(
+      '/uploads/:provider/*',
+      async ({ params, set }) => {
+        const { provider, '*': filePath } = params as { provider: string; '*': string };
+        try {
+          await deleteUploadFile(provider, filePath);
+          return { success: true };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Delete failed';
+          set.status = 400;
+          return { success: false, error: msg };
+        }
+      },
+      {
+        params: t.Object({
+          provider: t.String(),
+          '*': t.String(),
         }),
       }
     );

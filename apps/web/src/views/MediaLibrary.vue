@@ -5,39 +5,9 @@
         <div class="hero-kicker">Media Library</div>
         <h2>素材库工作台</h2>
         <p>按日期快速切换拍摄目录，跨目录选图，并把收藏目录联动到当前工作区。</p>
-
-        <div class="hero-stats">
-          <div class="hero-stat">
-            <span class="hero-stat-label">当前日期</span>
-            <strong>{{ currentDateTitle }}</strong>
-          </div>
-          <div class="hero-stat">
-            <span class="hero-stat-label">可见图片</span>
-            <strong>{{ totalVisibleImageCount }} 张</strong>
-          </div>
-          <div class="hero-stat">
-            <span class="hero-stat-label">已选图片</span>
-            <strong>{{ selectionStore.selectedCount }} 张</strong>
-          </div>
-        </div>
       </div>
 
       <div class="hero-side">
-        <div class="hero-date-switch">
-          <span class="hero-switch-label">按日期快速切换</span>
-          <div class="hero-date-controls">
-            <el-button :disabled="!mediaStore.canOpenNewerDate" @click="openAdjacentDate('newer')">
-              更新一天
-            </el-button>
-            <el-tag size="large" effect="dark" class="hero-current-date-tag">
-              {{ mediaStore.currentDatePath || '未选择日期' }}
-            </el-tag>
-            <el-button :disabled="!mediaStore.canOpenOlderDate" @click="openAdjacentDate('older')">
-              更早一天
-            </el-button>
-          </div>
-        </div>
-
         <div class="toolbar-actions">
           <el-button @click="refreshAll">刷新</el-button>
           <el-button type="primary" :disabled="!mediaStore.currentDatePath" @click="toggleCurrentDateFavorite">
@@ -61,26 +31,13 @@
 
     <div class="layout-grid">
       <aside class="sidebar-left">
-        <section class="card-panel section-panel sidebar-panel">
+        <section class="card-panel section-panel sidebar-panel" >
           <div class="section-header">
             <div>
               <h3>日期目录</h3>
-              <p class="section-helper">优先按年 / 月 / 日快速进入当天工作台</p>
+              <p class="section-helper">按年 / 月 / 日快速进入</p>
             </div>
             <el-tag size="small">{{ mediaStore.rootId }}</el-tag>
-          </div>
-
-          <div v-if="quickDatePaths.length > 0" class="mini-ribbon">
-            <button
-              v-for="path in quickDatePaths"
-              :key="path"
-              type="button"
-              class="mini-ribbon-pill"
-              :class="{ active: path === mediaStore.currentDatePath }"
-              @click="openDatePath(path)"
-            >
-              {{ formatDateChip(path) }}
-            </button>
           </div>
 
           <el-tree
@@ -94,11 +51,11 @@
           <el-empty v-else description="暂无日期目录" />
         </section>
 
-        <section class="card-panel section-panel sidebar-panel">
+        <section class="card-panel section-panel sidebar-panel" >
           <div class="section-header">
             <div>
               <h3>共享收藏</h3>
-              <p class="section-helper">收藏的是路径，可跨日期联动到当前工作区</p>
+              <p class="section-helper">收藏路径可跨日期联动</p>
             </div>
             <el-button link @click="mediaStore.refreshFavorites()">刷新</el-button>
           </div>
@@ -152,7 +109,7 @@
         </section>
       </aside>
 
-      <main class="content-area card-panel">
+      <main ref="contentAreaRef" class="content-area card-panel">
         <div class="workspace-header">
           <div>
             <h3>工作区</h3>
@@ -273,9 +230,10 @@
 
             <div class="stream-group-list">
               <section v-for="group in workspaceStreamGroups" :key="group.key" class="stream-group">
-                <div class="stream-group-header">
+                <div class="stream-group-header" :data-path="group.key.substring(group.key.indexOf(':') + 1)" @click="toggleSectionCollapse(group.key)">
                   <div class="stream-group-copy">
                     <div class="album-title-row">
+                      <el-icon class="collapse-icon" :class="{ collapsed: collapsedSections.has(group.key) }"><ArrowRight /></el-icon>
                       <h4>{{ group.title }}</h4>
                       <el-tag size="small">{{ group.items.length }} 张</el-tag>
                       <el-tag v-if="group.favorite" size="small" type="warning">收藏</el-tag>
@@ -284,7 +242,8 @@
                   </div>
                 </div>
 
-                <div class="media-masonry">
+                <Transition name="collapse">
+                  <div v-if="!collapsedSections.has(group.key)" class="media-masonry" :data-path="group.key.substring(group.key.indexOf(':') + 1)">
                   <article
                     v-for="(entry, entryIndex) in group.items"
                     :key="entry.key"
@@ -321,6 +280,7 @@
                     </div>
                   </article>
                 </div>
+                  </Transition>
               </section>
             </div>
           </section>
@@ -328,7 +288,7 @@
 
         <template v-else-if="workspaceSections.length > 0">
           <section v-for="section in workspaceSections" :key="section.key" class="workspace-section">
-            <div class="workspace-section-header">
+            <div class="workspace-section-header" @click="toggleSectionCollapse(section.key)">
               <div class="album-meta">
                 <div class="album-cover-shell">
                   <img
@@ -342,6 +302,7 @@
                 </div>
                 <div class="album-copy">
                   <div class="album-title-row">
+                    <el-icon class="collapse-icon" :class="{ collapsed: collapsedSections.has(section.key) }"><ArrowRight /></el-icon>
                     <h4>{{ section.title }}</h4>
                     <el-tag size="small">{{ section.items.length }} 张</el-tag>
                     <el-tag v-if="section.favorite" size="small" type="warning">已收藏</el-tag>
@@ -351,11 +312,11 @@
               </div>
 
               <div class="workspace-section-actions">
-                <el-button link @click="handleFavoritePath(section.relativePath, section.title)">收藏目录</el-button>
+                <el-button link @click.stop="handleFavoritePath(section.relativePath, section.title)">收藏目录</el-button>
                 <el-button
                   v-if="mediaStore.workspacePaths.includes(section.relativePath)"
                   link
-                  @click="mediaStore.removeWorkspacePath(section.relativePath)"
+                  @click.stop="mediaStore.removeWorkspacePath(section.relativePath)"
                 >
                   移出工作区
                 </el-button>
@@ -365,7 +326,7 @@
             <div v-if="section.loading" class="section-loading">
               <el-skeleton :rows="3" animated />
             </div>
-            <div v-else-if="section.items.length > 0" class="media-grid">
+            <div v-else-if="section.items.length > 0 && !collapsedSections.has(section.key)" class="media-grid">
               <article
                 v-for="(item, itemIndex) in section.items"
                 :key="item.assetKey"
@@ -401,7 +362,7 @@
       </main>
 
       <aside class="sidebar-right">
-        <section class="card-panel section-panel sidebar-panel basket-panel">
+        <section class="card-panel section-panel sidebar-panel basket-panel" >
           <div class="section-header">
             <div>
               <h3>选片篮</h3>
@@ -433,6 +394,7 @@
             v-if="selectionStore.selectedItems.length > 0"
             ref="selectionListRef"
             class="selection-list"
+            style="flex: 1; overflow-y: auto; min-height: 0;"
           >
             <div
               v-for="(item, itemIndex) in selectionStore.selectedItems"
@@ -478,7 +440,7 @@
           <el-empty v-else description="暂未选择图片" />
         </section>
 
-        <section class="card-panel section-panel sidebar-panel recent-panel">
+        <section class="card-panel section-panel sidebar-panel recent-panel" >
           <div class="section-header">
             <div>
               <h3>最近动作</h3>
@@ -486,7 +448,7 @@
             </div>
             <el-button link @click="mediaStore.refreshRecentActions()">刷新</el-button>
           </div>
-          <div v-if="mediaStore.recentActions.length > 0" class="recent-actions">
+          <div v-if="mediaStore.recentActions.length > 0" class="recent-actions" style="flex: 1; overflow-y: auto; min-height: 0;">
             <div v-for="action in mediaStore.recentActions" :key="action.id" class="recent-action-item">
               <div class="recent-action-top">
                 <strong>{{ getActionLabel(action.actionType) }}</strong>
@@ -579,6 +541,8 @@
 
 <script setup lang="ts">
 /* biome-ignore-all lint/correctness/noUnusedVariables lint/correctness/noUnusedImports: Vue <script setup> bindings are consumed by the template. */
+
+import { ArrowRight } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
@@ -593,7 +557,9 @@ interface DateTreeNode {
   label: string;
   isDate?: boolean;
   datePath?: string;
+  isFolder?: boolean;
   children?: DateTreeNode[];
+  loading?: boolean;
 }
 
 interface WorkspaceSection {
@@ -605,6 +571,7 @@ interface WorkspaceSection {
   loading: boolean;
   coverUrl: string | null;
   favorite: MediaFavoritePath | null;
+  collapsed?: boolean;
 }
 
 interface WorkspaceStreamItem {
@@ -642,7 +609,9 @@ const selectionDropTarget = ref<{
   assetKey: string;
   position: 'before' | 'after';
 } | null>(null);
+const collapsedSections = ref(new Set<string>());
 const selectionAutoScrollVelocity = ref(0);
+const contentAreaRef = ref<HTMLElement | null>(null);
 const actionForm = reactive({
   operator: '',
   formData: {} as Record<string, string>,
@@ -667,12 +636,24 @@ const dateTreeNodes = computed<DateTreeNode[]>(() => {
     children: year.months.map((month) => ({
       key: month.path,
       label: month.label,
-      children: month.dates.map((date) => ({
-        key: date.path,
-        label: date.label,
-        isDate: true,
-        datePath: date.path,
-      })),
+      children: month.dates.map((date) => {
+        const summary = mediaStore.getFolderSummaryForPath(date.path);
+        const folderChildren: DateTreeNode[] =
+          summary?.folders.map((folder) => ({
+            key: folder.relativePath,
+            label: folder.name,
+            isFolder: true,
+            datePath: date.path,
+          })) || [];
+
+        return {
+          key: date.path,
+          label: date.label,
+          isDate: true,
+          datePath: date.path,
+          children: folderChildren,
+        };
+      }),
     })),
   }));
 });
@@ -920,7 +901,15 @@ const previewCurrentItem = computed(() => {
 });
 
 function handleDateNodeClick(node: DateTreeNode) {
-  if (node.isDate && node.datePath) {
+  if (node.isFolder && node.datePath) {
+    // First scroll to the target (it may not exist yet)
+    scrollToFolder(node.key);
+    // Open the date (async) - after it completes, scroll again
+    void mediaStore.openDate(node.datePath).then(() => {
+      // After date is loaded, scroll again to ensure we're at the right position
+      setTimeout(() => scrollToFolder(node.key), 400);
+    });
+  } else if (node.isDate && node.datePath) {
     void mediaStore.openDate(node.datePath);
   }
 }
@@ -929,8 +918,16 @@ async function openDatePath(path: string) {
   await mediaStore.openDate(path);
 }
 
-async function openAdjacentDate(direction: 'newer' | 'older') {
-  await mediaStore.openAdjacentDate(direction);
+function scrollToFolder(relativePath: string) {
+  setTimeout(() => {
+    const contentArea = contentAreaRef.value;
+    const masonry = contentArea?.querySelector(
+      `.media-masonry[data-path="${CSS.escape(relativePath)}"]`
+    );
+    if (masonry) {
+      masonry.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, 300);
 }
 
 async function refreshAll() {
@@ -1377,6 +1374,15 @@ function formatDateTime(value: string) {
   return new Date(value).toLocaleString('zh-CN');
 }
 
+function toggleSectionCollapse(key: string) {
+  if (collapsedSections.value.has(key)) {
+    collapsedSections.value.delete(key);
+  } else {
+    collapsedSections.value.add(key);
+  }
+  collapsedSections.value = new Set(collapsedSections.value);
+}
+
 function formatDateChip(path: string) {
   return path.split('/').slice(-2).join(' / ');
 }
@@ -1476,7 +1482,7 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(360px, 1fr);
   gap: 20px;
-  padding: 28px;
+  padding: 16px 24px;
   background:
     radial-gradient(circle at top left, rgba(59, 130, 246, 0.14), transparent 40%),
     linear-gradient(135deg, #ffffff 0%, #f8fbff 55%, #eef5ff 100%);
@@ -1491,12 +1497,13 @@ onBeforeUnmount(() => {
 }
 
 .library-hero h2 {
-  margin: 8px 0;
-  font-size: 30px;
+  margin: 4px 0;
+  font-size: 22px;
 }
 
 .library-hero p {
   margin: 0;
+  font-size: 13px;
   color: #475569;
 }
 
@@ -1566,29 +1573,54 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr) 340px;
   gap: 16px;
-  align-items: start;
+  height: calc(100vh - 60px);
+  overflow: hidden;
 }
 
-.sidebar-left,
-.sidebar-right {
+.sidebar-left {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  position: sticky;
-  top: 16px;
-}
-
-.sidebar-right {
-  height: calc(100vh - 32px);
-}
-
-.section-panel {
-  padding: 18px;
+  height: 100%;
   overflow: hidden;
 }
 
 .sidebar-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-panel > .section-header {
+  flex-shrink: 0;
+}
+
+.sidebar-panel > .el-tree,
+.sidebar-panel > .favorite-list {
+  flex: 1;
+  overflow-y: auto;
   min-height: 0;
+}
+
+.content-area {
+  height: 100%;
+  overflow-y: auto !important;
+  scrollbar-gutter: stable;
+  
+}
+
+.sidebar-right {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.section-panel {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
@@ -1596,15 +1628,29 @@ onBeforeUnmount(() => {
 .recent-panel {
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .basket-panel {
-  flex: 1 1 auto;
-  min-height: 440px;
+  flex: 3;
+  min-height: 0;
 }
 
 .recent-panel {
-  flex: 0 0 clamp(260px, 28vh, 320px);
+  flex: 2;
+  min-height: 0;
+}
+
+.selection-list {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.recent-actions {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .basket-panel :deep(.el-empty),
@@ -1649,10 +1695,61 @@ onBeforeUnmount(() => {
   gap: 6px;
 }
 
+.workspace-section-header {
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.workspace-section-header:hover {
+  background: #f1f5f9;
+}
+
 .section-header,
 .workspace-header,
 .favorite-title-row,
-.recent-action-top,
+.recent-action-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.collapse-icon {
+  transition: transform 0.3s ease;
+  color: #64748b;
+  margin-right: 8px;
+  background: #e2e8f0;
+  border-radius: 4px;
+  padding: 2px;
+}
+
+.collapse-icon.collapsed {
+  transform: rotate(90deg);
+}
+
+/* Collapse transition */
+.collapse-enter-active,
+.collapse-leave-active {
+  transition: all 0.35s ease;
+  overflow: hidden;
+}
+
+.collapse-enter-from,
+.collapse-leave-to {
+  max-height: 0;
+  opacity: 0;
+  margin-top: 0;
+}
+
+.collapse-enter-to,
+.collapse-leave-from {
+  max-height: 2000px;
+  opacity: 1;
+  margin-top: 16px;
+}
+
 .workspace-section-header,
 .album-title-row,
 .preview-stage-toolbar {
