@@ -3,9 +3,10 @@ import { join, parse, posix, resolve, sep } from 'node:path';
 import { createLogger } from '../config/logger';
 import { getMediaActionGatewayConfig } from '../config/media-actions';
 
-const logger = createLogger('media-upload-browser');
-
-const CONTENT_BASE_DIR = resolve(process.cwd(), 'content');
+const PROJECT_ROOT = resolve(__dirname, '../../../..');
+const CONTENT_BASE_DIR = process.env.CONTENT_DIR
+  ? resolve(PROJECT_ROOT, process.env.CONTENT_DIR)
+  : join(PROJECT_ROOT, 'content');
 
 export interface UploadRoot {
   id: string;

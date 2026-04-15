@@ -107,7 +107,13 @@ export const useMediaLibraryStore = defineStore('media-library', () => {
       return itemsByPath.value[path];
     }
 
-    const items: MediaItem[] = [];
+    // Initialize empty array for incremental updates
+    itemsByPath.value = {
+      ...itemsByPath.value,
+      [path]: [],
+    };
+
+    const allItems: MediaItem[] = [];
     let cursor: string | undefined;
 
     while (true) {
@@ -118,7 +124,13 @@ export const useMediaLibraryStore = defineStore('media-library', () => {
         limit: 200,
         cursor,
       });
-      items.push(...result.items);
+      allItems.push(...result.items);
+
+      // Push incrementally so UI updates as each page arrives
+      itemsByPath.value = {
+        ...itemsByPath.value,
+        [path]: [...allItems],
+      };
 
       if (!result.nextCursor) {
         break;
@@ -127,11 +139,7 @@ export const useMediaLibraryStore = defineStore('media-library', () => {
       cursor = result.nextCursor;
     }
 
-    itemsByPath.value = {
-      ...itemsByPath.value,
-      [path]: items,
-    };
-    return items;
+    return allItems;
   }
 
   async function ensurePathLoaded(path: string) {

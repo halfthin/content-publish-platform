@@ -51,6 +51,10 @@ docker/.env.docker
 .DS_Store
 Thumbs.db
 
+# 缓存目录
+.cache/
+.omx/
+
 # IDE
 .vscode/
 .idea/

@@ -9,6 +9,7 @@ import {
   MediaLibraryError,
   type MediaLibraryService,
 } from '../services/media-library.service';
+import { getThumbBuffer } from '../services/media-thumb-cache.service';
 
 const logger = createLogger('media-route');
 
@@ -183,10 +184,17 @@ export function setupMediaRoutes(options: SetupMediaRoutesOptions = {}) {
       '/thumb/:assetKey',
       async ({ params, set }) => {
         try {
-          const file = await service.readAsset(params.assetKey);
-          set.headers['Content-Type'] = file.mimeType;
+          const resolved = await service.resolveAsset(params.assetKey);
+          const { buffer, mimeType, fromCache } = await getThumbBuffer(
+            resolved.absolutePath,
+            params.assetKey
+          );
+          set.headers['Content-Type'] = mimeType;
           set.headers['Cache-Control'] = 'public, max-age=300';
-          return file.buffer;
+          if (fromCache) {
+            set.headers['X-Thumb-Cache'] = 'HIT';
+          }
+          return buffer;
         } catch (error) {
           return handleMediaError(error, set);
         }

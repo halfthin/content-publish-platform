@@ -2147,8 +2147,9 @@ onBeforeUnmount(() => {
 }
 
 .media-masonry {
-  column-width: clamp(148px, 13vw, var(--stream-column-width));
-  column-gap: var(--stream-column-gap);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--stream-column-gap);
 }
 
 .media-card {
@@ -2162,9 +2163,9 @@ onBeforeUnmount(() => {
 }
 
 .media-card-stream {
-  display: inline-block;
-  width: 100%;
-  margin: 0 0 var(--stream-column-gap);
+  flex: 0 0 var(--stream-column-width);
+  width: var(--stream-column-width);
+  margin: 0;
   break-inside: avoid;
   -webkit-column-break-inside: avoid;
 }
