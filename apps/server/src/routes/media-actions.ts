@@ -15,6 +15,7 @@ import {
   getUploadDateTree,
   getUploadItems,
   getUploadRoots,
+  readUploadFile,
 } from '../services/media-upload-browser.service';
 
 const logger = createLogger('media-actions-route');
@@ -27,6 +28,12 @@ interface MediaActionUploadFileRecord {
   absolutePath?: string;
   relativePath?: string;
   mimeType?: string;
+  meta?: {
+    relativePath?: string;
+    originalName?: string;
+    size?: number;
+    fieldName?: string;
+  };
 }
 
 interface MediaActionUploadDescriptor {
@@ -133,7 +140,11 @@ function resolveUploadFile(
 
   return (
     descriptor.files.find((file) => {
-      return typeof file.relativePath === 'string' && file.relativePath === normalizedRequestPath;
+      return (
+        (typeof file.relativePath === 'string' && file.relativePath === normalizedRequestPath) ||
+        (typeof file.meta?.relativePath === 'string' &&
+          file.meta.relativePath === normalizedRequestPath)
+      );
     }) || null
   );
 }
@@ -166,262 +177,288 @@ export function setupMediaActionRoutes(options: SetupMediaActionRoutesOptions = 
       executor: getMediaActionQueueExecutor(),
     });
 
-  return new Elysia({ prefix: '/api/media/actions' })
-    .get('/definitions', async () => ({ success: true, data: actionService.getDefinitions() }))
-    .get(
-      '/',
-      async ({ query, set }) => {
-        try {
-          return {
-            success: true,
-            data: await actionService.listRecent(query.limit || 20),
-          };
-        } catch (error) {
-          return handleMediaActionError(error, set);
-        }
-      },
-      {
-        query: t.Object({
-          limit: t.Optional(t.Numeric()),
-        }),
-      }
-    )
-    .post(
-      '/',
-      async ({ body, set }) => {
-        try {
-          return {
-            success: true,
-            data: await actionService.submit(body),
-          };
-        } catch (error) {
-          return handleMediaActionError(error, set);
-        }
-      },
-      {
-        body: t.Object({
-          actionType: t.String(),
-          operator: t.Optional(t.String()),
-          assets: t.Array(
-            t.Object({
-              rootId: t.String(),
-              relativePath: t.String(),
-            })
-          ),
-          formData: t.Optional(t.Record(t.String(), t.Any())),
-          context: t.Optional(
-            t.Object({
-              workspaceDatePath: t.Optional(t.String()),
-              favoritePaths: t.Optional(t.Array(t.String())),
-            })
-          ),
-        }),
-      }
-    )
-    .get(
-      '/:id',
-      async ({ params, set }) => {
-        try {
-          const action = await actionService.getAction(params.id);
-          if (!action) {
-            set.status = 404;
+  return (
+    new Elysia({ prefix: '/api/media/actions' })
+      .get('/definitions', async () => ({ success: true, data: actionService.getDefinitions() }))
+      .get(
+        '/',
+        async ({ query, set }) => {
+          try {
             return {
-              success: false,
-              error: 'Media action not found',
+              success: true,
+              data: await actionService.listRecent(query.limit || 20),
             };
+          } catch (error) {
+            return handleMediaActionError(error, set);
           }
+        },
+        {
+          query: t.Object({
+            limit: t.Optional(t.Numeric()),
+          }),
+        }
+      )
+      .post(
+        '/',
+        async ({ body, set }) => {
+          try {
+            return {
+              success: true,
+              data: await actionService.submit(body),
+            };
+          } catch (error) {
+            return handleMediaActionError(error, set);
+          }
+        },
+        {
+          body: t.Object({
+            actionType: t.String(),
+            operator: t.Optional(t.String()),
+            assets: t.Array(
+              t.Object({
+                rootId: t.String(),
+                relativePath: t.String(),
+              })
+            ),
+            formData: t.Optional(t.Record(t.String(), t.Any())),
+            context: t.Optional(
+              t.Object({
+                workspaceDatePath: t.Optional(t.String()),
+                favoritePaths: t.Optional(t.Array(t.String())),
+              })
+            ),
+          }),
+        }
+      )
+      .get(
+        '/:id',
+        async ({ params, set }) => {
+          try {
+            const action = await actionService.getAction(params.id);
+            if (!action) {
+              set.status = 404;
+              return {
+                success: false,
+                error: 'Media action not found',
+              };
+            }
 
-          return {
-            success: true,
-            data: action,
+            return {
+              success: true,
+              data: action,
+            };
+          } catch (error) {
+            return handleMediaActionError(error, set);
+          }
+        },
+        {
+          params: t.Object({
+            id: t.String(),
+          }),
+        }
+      )
+      .post(
+        '/:id/retry',
+        async ({ params, set }) => {
+          try {
+            return {
+              success: true,
+              data: await actionService.retryAction(params.id),
+            };
+          } catch (error) {
+            return handleMediaActionError(error, set);
+          }
+        },
+        {
+          params: t.Object({
+            id: t.String(),
+          }),
+        }
+      )
+      .delete(
+        '/:id',
+        async ({ params, set }) => {
+          try {
+            const action = await actionService.getAction(params.id);
+            if (!action) {
+              set.status = 404;
+              return {
+                success: false,
+                error: 'Media action not found',
+              };
+            }
+
+            const descriptor = extractUploadDescriptor(action.callbackPayload);
+            const cleanupPath = descriptor ? resolveUploadCleanupPath(descriptor) : null;
+
+            if (cleanupPath) {
+              await fs.rm(cleanupPath, { recursive: true, force: true });
+            }
+
+            const deleted = await actionService.deleteAction(params.id);
+            return {
+              success: true,
+              data: {
+                id: deleted.id,
+                removedUploadDirectory: descriptor?.directory || null,
+              },
+            };
+          } catch (error) {
+            return handleMediaActionError(error, set);
+          }
+        },
+        {
+          params: t.Object({
+            id: t.String(),
+          }),
+        }
+      )
+      .get(
+        '/:id/uploads/*',
+        async ({ params, request, set }) => {
+          try {
+            const action = await actionService.getAction(params.id);
+            if (!action) {
+              set.status = 404;
+              return {
+                success: false,
+                error: 'Media action not found',
+              };
+            }
+
+            const descriptor = extractUploadDescriptor(action.callbackPayload);
+            if (!descriptor) {
+              set.status = 404;
+              return {
+                success: false,
+                error: 'Upload file not found',
+              };
+            }
+
+            const url = new URL(request.url);
+            const pathParts = url.pathname.split('/').filter(Boolean);
+            const uploadIndex = pathParts.indexOf('uploads');
+            const rawRequestedPath =
+              uploadIndex >= 0 ? pathParts.slice(uploadIndex + 1).join('/') : '';
+
+            const matchedFile = resolveUploadFile(descriptor, rawRequestedPath);
+            if (!matchedFile?.absolutePath) {
+              set.status = 404;
+              return {
+                success: false,
+                error: 'Upload file not found',
+              };
+            }
+
+            const fileBuffer = await fs.readFile(matchedFile.absolutePath);
+            const detectedType = await fileTypeFromBuffer(fileBuffer);
+            set.headers['Content-Type'] =
+              detectedType?.mime ||
+              matchedFile.mimeType ||
+              getFallbackContentType(matchedFile.relativePath || matchedFile.absolutePath);
+
+            return fileBuffer;
+          } catch (error) {
+            return handleMediaActionError(error, set);
+          }
+        },
+        {
+          params: t.Object({
+            id: t.String(),
+            '*': t.Any(),
+          }),
+        }
+      )
+      // ========== 上传文件浏览 API ==========
+      .get('/uploads/roots', async () => {
+        const roots = await getUploadRoots();
+        return { success: true, data: roots };
+      })
+      .get(
+        '/uploads/tree',
+        async ({ query }) => {
+          const provider = (query as { provider?: string }).provider || 'openclaw';
+          const path = (query as { path?: string }).path || '';
+          const tree = await getUploadDateTree(provider, path);
+          return { success: true, data: tree };
+        },
+        {
+          query: t.Object({
+            provider: t.Optional(t.String()),
+            path: t.Optional(t.String()),
+          }),
+        }
+      )
+      .get(
+        '/uploads/items',
+        async ({ query }) => {
+          const { provider, path, recursive, limit, cursor } = query as {
+            provider?: string;
+            path?: string;
+            recursive?: string;
+            limit?: string;
+            cursor?: string;
           };
-        } catch (error) {
-          return handleMediaActionError(error, set);
+          const result = await getUploadItems(provider || 'openclaw', path || '', {
+            recursive: recursive === 'true',
+            limit: limit ? parseInt(limit, 10) : 120,
+            cursor,
+          });
+          return { success: true, data: result };
+        },
+        {
+          query: t.Object({
+            provider: t.Optional(t.String()),
+            path: t.Optional(t.String()),
+            recursive: t.Optional(t.String()),
+            limit: t.Optional(t.String()),
+            cursor: t.Optional(t.String()),
+          }),
         }
-      },
-      {
-        params: t.Object({
-          id: t.String(),
-        }),
-      }
-    )
-    .post(
-      '/:id/retry',
-      async ({ params, set }) => {
-        try {
-          return {
-            success: true,
-            data: await actionService.retryAction(params.id),
-          };
-        } catch (error) {
-          return handleMediaActionError(error, set);
+      )
+      .get(
+        '/uploads/:provider/*',
+        async ({ params, set }) => {
+          const { provider, '*': filePath } = params as { provider: string; '*': string };
+          try {
+            const { buffer, mimeType } = await readUploadFile(provider, filePath);
+            set.headers['Content-Type'] = mimeType;
+            set.headers['Cache-Control'] = 'public, max-age=300';
+            return buffer;
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Read failed';
+            const isNotFound =
+              err instanceof Error && (err as NodeJS.ErrnoException).code === 'ENOENT';
+            set.status = isNotFound ? 404 : 400;
+            return { success: false, error: msg };
+          }
+        },
+        {
+          params: t.Object({
+            provider: t.String(),
+            '*': t.String(),
+          }),
         }
-      },
-      {
-        params: t.Object({
-          id: t.String(),
-        }),
-      }
-    )
-    .delete(
-      '/:id',
-      async ({ params, set }) => {
-        try {
-          const action = await actionService.getAction(params.id);
-          if (!action) {
-            set.status = 404;
-            return {
-              success: false,
-              error: 'Media action not found',
-            };
+      )
+      .delete(
+        '/uploads/:provider/*',
+        async ({ params, set }) => {
+          const { provider, '*': filePath } = params as { provider: string; '*': string };
+          try {
+            await deleteUploadFile(provider, filePath);
+            return { success: true };
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Delete failed';
+            set.status = 400;
+            return { success: false, error: msg };
           }
-
-          const descriptor = extractUploadDescriptor(action.callbackPayload);
-          const cleanupPath = descriptor ? resolveUploadCleanupPath(descriptor) : null;
-
-          if (cleanupPath) {
-            await fs.rm(cleanupPath, { recursive: true, force: true });
-          }
-
-          const deleted = await actionService.deleteAction(params.id);
-          return {
-            success: true,
-            data: {
-              id: deleted.id,
-              removedUploadDirectory: descriptor?.directory || null,
-            },
-          };
-        } catch (error) {
-          return handleMediaActionError(error, set);
+        },
+        {
+          params: t.Object({
+            provider: t.String(),
+            '*': t.String(),
+          }),
         }
-      },
-      {
-        params: t.Object({
-          id: t.String(),
-        }),
-      }
-    )
-    .get(
-      '/:id/uploads/*',
-      async ({ params, request, set }) => {
-        try {
-          const action = await actionService.getAction(params.id);
-          if (!action) {
-            set.status = 404;
-            return {
-              success: false,
-              error: 'Media action not found',
-            };
-          }
-
-          const descriptor = extractUploadDescriptor(action.callbackPayload);
-          if (!descriptor) {
-            set.status = 404;
-            return {
-              success: false,
-              error: 'Upload file not found',
-            };
-          }
-
-          const url = new URL(request.url);
-          const pathParts = url.pathname.split('/').filter(Boolean);
-          const uploadIndex = pathParts.indexOf('uploads');
-          const rawRequestedPath =
-            uploadIndex >= 0 ? pathParts.slice(uploadIndex + 1).join('/') : '';
-
-          const matchedFile = resolveUploadFile(descriptor, rawRequestedPath);
-          if (!matchedFile?.absolutePath) {
-            set.status = 404;
-            return {
-              success: false,
-              error: 'Upload file not found',
-            };
-          }
-
-          const fileBuffer = await fs.readFile(matchedFile.absolutePath);
-          const detectedType = await fileTypeFromBuffer(fileBuffer);
-          set.headers['Content-Type'] =
-            detectedType?.mime ||
-            matchedFile.mimeType ||
-            getFallbackContentType(matchedFile.relativePath || matchedFile.absolutePath);
-
-          return fileBuffer;
-        } catch (error) {
-          return handleMediaActionError(error, set);
-        }
-      },
-      {
-        params: t.Object({
-          id: t.String(),
-          '*': t.Any(),
-        }),
-      }
-    )
-    // ========== 上传文件浏览 API ==========
-    .get('/uploads/roots', async () => {
-      const roots = await getUploadRoots();
-      return { success: true, data: roots };
-    })
-    .get(
-      '/uploads/tree',
-      async ({ query }) => {
-        const provider = (query as { provider?: string }).provider || 'openclaw';
-        const path = (query as { path?: string }).path || '';
-        const tree = await getUploadDateTree(provider, path);
-        return { success: true, data: tree };
-      },
-      {
-        query: t.Object({
-          provider: t.Optional(t.String()),
-          path: t.Optional(t.String()),
-        }),
-      }
-    )
-    .get(
-      '/uploads/items',
-      async ({ query }) => {
-        const { provider, path, recursive, limit, cursor } = query as {
-          provider?: string;
-          path?: string;
-          recursive?: string;
-          limit?: string;
-          cursor?: string;
-        };
-        const result = await getUploadItems(provider || 'openclaw', path || '', {
-          recursive: recursive === 'true',
-          limit: limit ? parseInt(limit, 10) : 120,
-          cursor,
-        });
-        return { success: true, data: result };
-      },
-      {
-        query: t.Object({
-          provider: t.Optional(t.String()),
-          path: t.Optional(t.String()),
-          recursive: t.Optional(t.String()),
-          limit: t.Optional(t.String()),
-          cursor: t.Optional(t.String()),
-        }),
-      }
-    )
-    .delete(
-      '/uploads/:provider/*',
-      async ({ params, set }) => {
-        const { provider, '*': filePath } = params as { provider: string; '*': string };
-        try {
-          await deleteUploadFile(provider, filePath);
-          return { success: true };
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : 'Delete failed';
-          set.status = 400;
-          return { success: false, error: msg };
-        }
-      },
-      {
-        params: t.Object({
-          provider: t.String(),
-          '*': t.String(),
-        }),
-      }
-    );
+      )
+  );
 }

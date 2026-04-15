@@ -52,7 +52,14 @@ function getUploadBaseDir(): string {
 
 function sanitizePath(path: string): string {
   // 防止路径遍历攻击：移除所有 .. 和绝对路径
-  const normalized = posix.normalize('/' + path.replace(/^[/\\]*/, '').replace(/\.\./g, ''));
+  // 先 URL 解码（处理 %2F 等被编码的字符）
+  let decoded = path;
+  try {
+    decoded = decodeURIComponent(path);
+  } catch {
+    // 忽略解码失败的情况
+  }
+  const normalized = posix.normalize('/' + decoded.replace(/^[/\\]*/, '').replace(/\.\./g, ''));
   return normalized;
 }
 
@@ -208,7 +215,7 @@ export async function getUploadItems(
   const items: UploadItem[] = [];
   let nextCursor: string | null = null;
 
-  async function scanDirectory(dir: string, depth: number = 0) {
+  async function scanDirectory(dir: string, currentRelativePath: string, depth: number = 0) {
     if (items.length >= limit) {
       return;
     }
@@ -222,18 +229,18 @@ export async function getUploadItems(
         }
 
         const fullPath = join(dir, entry.name);
-        const relativePath = posix.join(safeDirPath, entry.name);
+        const entryRelativePath = posix.join(currentRelativePath, entry.name);
 
         if (entry.isDirectory()) {
           if (recursive && depth < 3) {
-            await scanDirectory(fullPath, depth + 1);
+            await scanDirectory(fullPath, entryRelativePath, depth + 1);
           }
         } else if (entry.isFile()) {
           const stat = await fs.stat(fullPath);
           items.push({
             filename: entry.name,
-            relativePath,
-            parentPath: safeDirPath,
+            relativePath: entryRelativePath,
+            parentPath: currentRelativePath,
             size: stat.size,
             modifiedAt: stat.mtime.toISOString(),
             mimeType: getMimeType(entry.name),
@@ -255,7 +262,7 @@ export async function getUploadItems(
     }
   }
 
-  await scanDirectory(rootDir);
+  await scanDirectory(rootDir, safeDirPath);
 
   if (items.length > limit) {
     items.length = limit;
@@ -266,6 +273,42 @@ export async function getUploadItems(
   items.sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime());
 
   return { items, nextCursor };
+}
+
+/**
+ * 读取指定的上传文件
+ */
+export async function readUploadFile(
+  provider: string,
+  relativePath: string
+): Promise<{ buffer: Buffer; mimeType: string }> {
+  const safeProvider = sanitizePath(provider).replace(/^\//, '');
+  const safeFilePath = sanitizePath(relativePath).replace(/^\//, '');
+  const fullPath = join(getUploadBaseDir(), 'uploaded', safeProvider, safeFilePath);
+
+  if (!isPathSafe(join(getUploadBaseDir(), 'uploaded'), fullPath)) {
+    throw new Error('Invalid path: path traversal detected');
+  }
+
+  const buffer = await fs.readFile(fullPath);
+  const ext = safeFilePath.split('.').pop()?.toLowerCase() || '';
+  const mimeType = getMimeTypeFromExt(ext);
+  return { buffer, mimeType };
+}
+
+function getMimeTypeFromExt(ext: string): string {
+  const mimeMap: Record<string, string> = {
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    mp4: 'video/mp4',
+    webm: 'video/webm',
+    pdf: 'application/pdf',
+    json: 'application/json',
+  };
+  return mimeMap[ext] || 'application/octet-stream';
 }
 
 /**

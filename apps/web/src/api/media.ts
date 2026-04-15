@@ -113,6 +113,12 @@ export interface MediaActionUploadFile {
   absolutePath?: string;
   mimeType?: string;
   size?: number;
+  meta?: {
+    relativePath?: string;
+    originalName?: string;
+    size?: number;
+    fieldName?: string;
+  };
 }
 
 export interface MediaActionUploadPayload {
@@ -196,6 +202,16 @@ export function getMediaActionUploadFileUrl(actionId: string, relativePath: stri
     .join('/');
 
   return `${API_BASE_URL}/media/actions/${encodeURIComponent(actionId)}/uploads/${encodedPath}`;
+}
+
+export function getMediaUploadProviderFileUrl(provider: string, relativePath: string): string {
+  const encodedPath = relativePath
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+
+  return `${API_BASE_URL}/media/actions/uploads/${encodeURIComponent(provider)}/${encodedPath}`;
 }
 
 export async function getMediaRoots(): Promise<MediaRoot[]> {
@@ -314,11 +330,8 @@ export interface MediaActionUploadItemsResponse {
 }
 
 export async function getMediaActionUploadRoots(): Promise<MediaActionUploadRoot[]> {
-  const response = (await apiClient.get('/media/actions/uploads/roots')) as {
-    success: boolean;
-    data: MediaActionUploadRoot[];
-  };
-  return response.data;
+  const response = (await apiClient.get('/media/actions/uploads/roots')) as MediaActionUploadRoot[];
+  return response;
 }
 
 export async function getMediaActionUploadTree(
@@ -327,8 +340,8 @@ export async function getMediaActionUploadTree(
 ): Promise<MediaActionUploadDateTreeYear[]> {
   const response = (await apiClient.get('/media/actions/uploads/tree', {
     params: { provider, path },
-  })) as { success: boolean; data: MediaActionUploadDateTreeYear[] };
-  return response.data;
+  })) as MediaActionUploadDateTreeYear[];
+  return response;
 }
 
 export async function getMediaActionUploadItems(params: {
@@ -338,11 +351,8 @@ export async function getMediaActionUploadItems(params: {
   limit?: number;
   cursor?: string;
 }): Promise<MediaActionUploadItemsResponse> {
-  const response = (await apiClient.get('/media/actions/uploads/items', { params })) as {
-    success: boolean;
-    data: MediaActionUploadItemsResponse;
-  };
-  return response.data;
+  const response = (await apiClient.get('/media/actions/uploads/items', { params })) as MediaActionUploadItemsResponse;
+  return response;
 }
 
 export async function deleteMediaActionUploadFile(

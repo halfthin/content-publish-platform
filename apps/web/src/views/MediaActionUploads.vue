@@ -168,10 +168,10 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { onMounted, ref } from 'vue';
 import {
   deleteMediaActionUploadFile,
-  getMediaActionUploadFileUrl,
   getMediaActionUploadItems,
   getMediaActionUploadRoots,
   getMediaActionUploadTree,
+  getMediaUploadProviderFileUrl,
   type MediaActionUploadDateTreeYear,
   type MediaActionUploadItem,
   type MediaActionUploadRoot,
@@ -204,12 +204,12 @@ function buildDateTree(years: MediaActionUploadDateTreeYear[]): DateTreeNode[] {
     children: year.months.map((month) => ({
       key: `month-${year.year}-${month.month}`,
       label: `${year.label}-${month.label}`,
-      path: `${year.path}/${month.path}`,
+      path: `${year.path}/${month.label}`,
       children:
         month.days?.map((day) => ({
           key: `day-${year.year}-${month.month}-${day.day}`,
           label: `${month.label}-${day.label}`,
-          path: `${year.path}/${month.path}/${day.day}`,
+          path: `${year.path}/${month.label}/${day.day}`,
           isDate: true,
         })) || [],
     })),
@@ -240,14 +240,15 @@ async function loadItems(cursor?: string) {
     const result = await getMediaActionUploadItems({
       provider: currentRoot.value.id,
       path: currentPath.value,
-      recursive: false,
+      recursive: true,
       limit: 120,
       cursor,
     });
+    const imageItems = result.items.filter((item) => item.mimeType.startsWith('image/'));
     if (cursor) {
-      items.value.push(...result.items);
+      items.value.push(...imageItems);
     } else {
-      items.value = result.items;
+      items.value = imageItems;
     }
     nextCursor.value = result.nextCursor;
   } catch {
@@ -342,7 +343,7 @@ async function deleteSelected() {
 
 function getFileUrl(relativePath: string): string {
   if (!currentRoot.value) return '';
-  return getMediaActionUploadFileUrl(currentRoot.value.id, relativePath);
+  return getMediaUploadProviderFileUrl(currentRoot.value.id, relativePath);
 }
 
 function isImage(mimeType: string): boolean {
