@@ -253,87 +253,87 @@
             <pre>{{ payloadPreviewJson }}</pre>
           </div>
         </section>
-
-        <section class="card-panel page-panel side-panel">
-          <div class="section-header">
-            <div>
-              <h3>任务状态</h3>
-              <p class="section-helper">提交后会自动轮询；结果图会在下方“结果查看区”集中展示。</p>
-            </div>
-            <el-tag v-if="submittedAction" :type="statusTagType" effect="dark">{{ submittedAction.status }}</el-tag>
-          </div>
-
-          <el-skeleton v-if="loadingAction" :rows="4" animated />
-          <template v-else-if="submittedAction">
-            <el-descriptions :column="1" border size="small" class="status-descriptions">
-              <el-descriptions-item label="任务 ID">{{ submittedAction.id }}</el-descriptions-item>
-              <el-descriptions-item label="外部任务">
-                {{ submittedAction.externalTaskId || '等待 Gateway 返回' }}
-              </el-descriptions-item>
-              <el-descriptions-item label="更新时间">
-                {{ formatDateTime(submittedAction.updatedAt) }}
-              </el-descriptions-item>
-              <el-descriptions-item label="结果摘要">
-                {{ resultView.summary || '—' }}
-              </el-descriptions-item>
-              <el-descriptions-item label="错误信息">
-                {{ submittedAction.error || '—' }}
-              </el-descriptions-item>
-            </el-descriptions>
-
-            <div v-if="resultView.upload" class="status-upload-tip">
-              <span>已回流 {{ resultView.upload.fileCount }} 个结果文件</span>
-              <span class="status-upload-dir">{{ resultView.upload.directory || '—' }}</span>
-            </div>
-
-            <div v-else-if="resultView.images.length > 0" class="status-upload-tip">
-              <span>已解析到 {{ resultView.images.length }} 张可预览结果图</span>
-            </div>
-
-            <div v-if="resultView.upload?.manifestUrl" class="status-link-row">
-              <a
-                :href="resultView.upload?.manifestUrl"
-                target="_blank"
-                rel="noreferrer"
-                class="result-link"
-              >
-                查看 manifest.json
-              </a>
-            </div>
-
-            <div class="task-action-row">
-              <el-button
-                v-if="canRetrySubmittedAction"
-                size="small"
-                type="primary"
-                :loading="retryingActionId === submittedAction.id"
-                @click="retryCurrentAction"
-              >
-                重新提交
-              </el-button>
-              <el-button
-                size="small"
-                type="danger"
-                plain
-                :loading="deletingActionId === submittedAction.id"
-                @click="deleteCurrentAction"
-              >
-                删除任务
-              </el-button>
-            </div>
-
-            <div v-if="callbackPayloadJson" class="callback-block">
-              <div class="payload-preview-header">
-                <strong>Callback 原始结果</strong>
-                <span>可用于排查 OpenClaw 返回内容</span>
-              </div>
-              <pre>{{ callbackPayloadJson }}</pre>
-            </div>
-          </template>
-          <el-empty v-else description="尚未提交图生图任务" :image-size="72" />
-        </section>
       </aside>
     </div>
+
+    <section class="card-panel page-panel">
+      <div class="section-header">
+        <div>
+          <h3>任务状态</h3>
+          <p class="section-helper">提交后会自动轮询；结果图会在下方"结果查看区"集中展示。</p>
+        </div>
+        <el-tag v-if="submittedAction" :type="statusTagType" effect="dark">{{ submittedAction.status }}</el-tag>
+      </div>
+
+      <el-skeleton v-if="loadingAction" :rows="4" animated />
+      <template v-else-if="submittedAction">
+        <el-descriptions :column="1" border size="small" class="status-descriptions">
+          <el-descriptions-item label="任务 ID">{{ submittedAction.id }}</el-descriptions-item>
+          <el-descriptions-item label="外部任务">
+            {{ submittedAction.externalTaskId || '等待 Gateway 返回' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="更新时间">
+            {{ formatDateTime(submittedAction.updatedAt) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="结果摘要">
+            {{ resultView.summary || '—' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="错误信息">
+            {{ submittedAction.error || '—' }}
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <div v-if="resultView.upload" class="status-upload-tip">
+          <span>已回流 {{ resultView.upload.fileCount }} 个结果文件</span>
+          <span class="status-upload-dir">{{ resultView.upload.directory || '—' }}</span>
+        </div>
+
+        <div v-else-if="resultView.images.length > 0" class="status-upload-tip">
+          <span>已解析到 {{ resultView.images.length }} 张可预览结果图</span>
+        </div>
+
+        <div v-if="resultView.upload?.manifestUrl" class="status-link-row">
+          <a
+            :href="resultView.upload?.manifestUrl"
+            target="_blank"
+            rel="noreferrer"
+            class="result-link"
+          >
+            查看 manifest.json
+          </a>
+        </div>
+
+        <div class="task-action-row">
+          <el-button
+            v-if="canRetrySubmittedAction"
+            size="small"
+            type="primary"
+            :loading="retryingActionId === submittedAction.id"
+            @click="retryCurrentAction"
+          >
+            重新提交
+          </el-button>
+          <el-button
+            size="small"
+            type="danger"
+            plain
+            :loading="deletingActionId === submittedAction.id"
+            @click="deleteCurrentAction"
+          >
+            删除任务
+          </el-button>
+        </div>
+
+        <div v-if="callbackPayloadJson" class="callback-block">
+          <div class="payload-preview-header">
+            <strong>Callback 原始结果</strong>
+            <span>可用于排查 OpenClaw 返回内容</span>
+          </div>
+          <pre>{{ callbackPayloadJson }}</pre>
+        </div>
+      </template>
+      <el-empty v-else description="尚未提交图生图任务" :image-size="72" />
+    </section>
 
     <section class="card-panel page-panel result-viewer-panel">
       <div class="section-header">
