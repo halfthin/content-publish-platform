@@ -1,6 +1,8 @@
 import { cors } from '@elysiajs/cors';
 import { Elysia } from 'elysia';
+import { ws } from 'elysia/ws';
 import { createLogger } from '../config/logger';
+import { setupWebSocket } from '../websocket/server';
 import { setupAccountsRoutes } from './accounts';
 import { setupContentsRoutes } from './contents';
 import { setupMediaRoutes } from './media';
@@ -39,6 +41,11 @@ export function setupRoutes() {
         status: 'ok',
         timestamp: new Date().toISOString(),
       }))
+      .use(
+        ws({
+          ...setupWebSocket(),
+        })
+      )
       // 内容管理 API
       .use(setupContentsRoutes())
       // 账号管理 API
@@ -53,7 +60,7 @@ export function setupRoutes() {
       .use(setupMediaActionRoutes())
       .onRequest(({ path, method }) => {
         // 过滤高频噪音路径
-        if (path === '/ws' || path.startsWith('/ws/')) {
+        if (path === '/ws' || path?.startsWith('/ws/')) {
           return;
         }
         requestLogger.debug({ path, method }, 'Request received');

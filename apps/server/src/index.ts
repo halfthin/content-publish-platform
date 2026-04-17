@@ -8,7 +8,11 @@ import { closeMediaActionQueueExecutor, startMediaActionWorker } from './queues/
 import { getPublishQueue, startAllWorkers } from './queues/publish-queue';
 import { setupRoutes } from './routes';
 import { startFileWatcher, stopFileWatcher } from './services/file-watcher.service';
-import { startMediaActionTimeoutService, stopMediaActionTimeoutService } from './services/media-action-timeout.service';
+import { getSseManager } from './services/media-action-sse-manager';
+import {
+  startMediaActionTimeoutService,
+  stopMediaActionTimeoutService,
+} from './services/media-action-timeout.service';
 
 // Load environment variables from apps/server/.env
 config({ path: '.env', override: true });
@@ -70,7 +74,10 @@ async function bootstrap() {
     startMediaActionTimeoutService();
     logger.info({ module: 'media-action-timeout' }, 'Media action timeout service started');
   } catch (error) {
-    logger.error({ module: 'media-action-timeout', error }, 'Failed to start media action timeout service');
+    logger.error(
+      { module: 'media-action-timeout', error },
+      'Failed to start media action timeout service'
+    );
   }
 
   logger.info({ module: 'bootstrap' }, 'Bootstrap completed');
@@ -106,10 +113,24 @@ const shutdown = async (signal: string) => {
     stopMediaActionTimeoutService();
     logger.info({ module: 'media-action-timeout' }, 'Media action timeout service stopped');
   } catch (error) {
-    logger.error({ module: 'media-action-timeout', error }, 'Error stopping media action timeout service');
+    logger.error(
+      { module: 'media-action-timeout', error },
+      'Error stopping media action timeout service'
+    );
   }
 
-  // 5. 关闭浏览器池
+  // 5. 关闭 SSE 管理器
+  try {
+    const sseManager = getSseManager();
+    if (sseManager) {
+      sseManager.shutdown();
+      logger.info({ module: 'media-action-sse-manager' }, 'SSE manager shut down');
+    }
+  } catch (error) {
+    logger.error({ module: 'media-action-sse-manager', error }, 'Error shutting down SSE manager');
+  }
+
+  // 6. 关闭浏览器池
   try {
     await browserPool.close();
     logger.info({ module: 'playwright' }, 'Browser pool closed');
@@ -117,13 +138,13 @@ const shutdown = async (signal: string) => {
     logger.error({ module: 'playwright', error }, 'Error closing browser pool');
   }
 
-  // 6. 关闭服务器
+  // 7. 关闭服务器
   app.stop();
 
-  // 7. 断开数据库连接
+  // 8. 断开数据库连接
   await disconnectPrisma();
 
-  // 8. 断开共享 Redis 连接
+  // 9. 断开共享 Redis 连接
   await disconnectRedisClient();
 
   logger.info({}, 'Server shutdown complete');

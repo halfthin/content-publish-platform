@@ -204,12 +204,12 @@ function buildDateTree(years: MediaActionUploadDateTreeYear[]): DateTreeNode[] {
     children: year.months.map((month) => ({
       key: `month-${year.year}-${month.month}`,
       label: `${year.label}-${month.label}`,
-      path: `${year.path}/${month.label}`,
+      path: month.path,
       children:
         month.days?.map((day) => ({
           key: `day-${year.year}-${month.month}-${day.day}`,
           label: `${month.label}-${day.label}`,
-          path: `${year.path}/${month.label}/${day.day}`,
+          path: day.path,
           isDate: true,
         })) || [],
     })),

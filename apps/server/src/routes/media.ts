@@ -194,7 +194,7 @@ export function setupMediaRoutes(options: SetupMediaRoutesOptions = {}) {
           if (fromCache) {
             set.headers['X-Thumb-Cache'] = 'HIT';
           }
-          return buffer;
+          return new Response(buffer, { headers: set.headers });
         } catch (error) {
           return handleMediaError(error, set);
         }
@@ -212,7 +212,7 @@ export function setupMediaRoutes(options: SetupMediaRoutesOptions = {}) {
           const file = await service.readAsset(params.assetKey);
           set.headers['Content-Type'] = file.mimeType;
           set.headers['Cache-Control'] = 'public, max-age=60';
-          return file.buffer;
+          return new Response(file.buffer, { headers: set.headers });
         } catch (error) {
           return handleMediaError(error, set);
         }

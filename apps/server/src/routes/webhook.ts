@@ -8,6 +8,7 @@ import {
   createRedisAccountCheckLoginCallbackStore,
 } from '../services/account-check-login-callbacks.service';
 import { moveToPublished } from '../services/content.service';
+import { getSseManager } from '../services/media-action-sse-manager';
 import {
   createMediaActionsService,
   createRedisMediaActionStore,
@@ -26,7 +27,9 @@ import {
   createOpenClawResultStorageService,
   type OpenClawResultStorageService,
 } from '../services/openclaw-result-storage.service';
+import type { MediaActionBroadcast } from '../types/media-action-sse';
 import type { OpenClawCallbackEnvelopeV1 } from '../types/openclaw-callback';
+import { broadcastMediaAction } from '../websocket/server';
 
 const logger = createLogger('webhook-route');
 
@@ -548,6 +551,55 @@ export function setupWebhookRoutes(options: SetupWebhookRoutesOptions = {}) {
                 mediaActionId: normalizedCallback.refs?.mediaActionId || null,
               },
             } as Parameters<MediaActionsService['handleCallback']>[0]);
+
+            // 如果 SSE 未订阅（终态回调），通过 WebSocket 广播确保前端能收到
+            const callbackJobId = normalizedCallback.refs?.mediaActionId || undefined;
+            if (callbackJobId) {
+              const sseManager = getSseManager();
+              const isSseActive = sseManager?.isSubscribed(callbackJobId) ?? false;
+              if (!isSseActive) {
+                const status = normalizedCallback.status;
+                const outputFiles =
+                  storedUpload?.files.map((f) => f.relativePath) ||
+                  ((normalizedCallback.result as Record<string, unknown>)?.outputFiles as
+                    | string[]
+                    | undefined);
+                const externalTaskId = normalizedCallback.taskId;
+                if (status === 'success') {
+                  const msg: MediaActionBroadcast = {
+                    type: 'media_action_done',
+                    data: {
+                      jobId: callbackJobId,
+                      externalTaskId,
+                      event: 'done',
+                      status: 'success',
+                      message:
+                        ((normalizedCallback.result as Record<string, unknown>)?.summary as
+                          | string
+                          | undefined) || (normalizedCallback.result as unknown as string),
+                      outputFiles,
+                      result: normalizedCallback.result as Record<string, unknown>,
+                    },
+                  };
+                  broadcastMediaAction(msg);
+                } else if (status === 'failed') {
+                  const msg: MediaActionBroadcast = {
+                    type: 'media_action_failed',
+                    data: {
+                      jobId: callbackJobId,
+                      externalTaskId,
+                      event: 'failed',
+                      status: 'failed',
+                      message: normalizedCallback.error?.message,
+                      error: normalizedCallback.error?.message,
+                      outputFiles,
+                    },
+                  };
+                  broadcastMediaAction(msg);
+                }
+              }
+            }
+
             return {
               success: true,
               data: {

@@ -1,7 +1,7 @@
 import { CronJob } from 'cron';
 import { createLogger } from '../config/logger';
-import { createMediaActionsService, createRedisMediaActionStore } from './media-actions.service';
 import { getTimedOutMediaActions } from './media-action-dispatcher';
+import { createMediaActionsService, createRedisMediaActionStore } from './media-actions.service';
 
 const logger = createLogger('media-action-timeout');
 
@@ -58,7 +58,10 @@ class MediaActionTimeoutService {
         return;
       }
 
-      logger.warn('Found timed out media actions', { count: timedOutIds.length, jobIds: timedOutIds });
+      logger.warn('Found timed out media actions', {
+        count: timedOutIds.length,
+        jobIds: timedOutIds,
+      });
 
       const store = createRedisMediaActionStore();
       const mediaActionsService = createMediaActionsService(store);
@@ -73,7 +76,10 @@ class MediaActionTimeoutService {
 
           // 只处理还在进行中的状态
           if (!['DISPATCHING', 'DISPATCHED', 'RUNNING'].includes(action.status)) {
-            logger.debug('Media action not in pending status, skipping', { jobId, status: action.status });
+            logger.debug('Media action not in pending status, skipping', {
+              jobId,
+              status: action.status,
+            });
             continue;
           }
 

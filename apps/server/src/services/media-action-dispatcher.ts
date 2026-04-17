@@ -18,6 +18,15 @@ const logger = createLogger('media-action-dispatcher');
 interface CreateHttpMediaActionDispatcherOptions {
   config?: Partial<MediaActionGatewayConfig>;
   fetchImpl?: typeof fetch;
+  sseManager?: {
+    subscribe(
+      jobId: string,
+      eventsPath: string,
+      externalTaskId: string,
+      routeId: string,
+      taskId: string
+    ): Promise<void>;
+  };
 }
 
 function trimTrailingSlash(value: string): string {
@@ -52,10 +61,10 @@ function resolveGatewayConfig(
     url: trimTrailingSlash(overrides.url || base.url || ''),
     callbackBaseUrl: trimTrailingSlash(overrides.callbackBaseUrl || base.callbackBaseUrl),
     routePrefix: normalizeRoutePrefix(overrides.routePrefix || base.routePrefix),
-    imageToImageDispatchPath: normalizeAbsolutePath(
-      overrides.imageToImageDispatchPath || base.imageToImageDispatchPath,
-      '/webhooks/cpp/oc/vd-shoot'
-    ),
+    dispatchPathByActionType: {
+      ...base.dispatchPathByActionType,
+      ...overrides.dispatchPathByActionType,
+    },
   };
 }
 
@@ -182,13 +191,11 @@ function buildImageToImagePayload(
     referenceImages: {
       ...(summary.assets[0]?.sourcePath ? { product: summary.assets[0].sourcePath } : {}),
       ...(summary.assets[1]?.sourcePath ? { outfit: summary.assets[1].sourcePath } : {}),
-      ...(normalizeOptionalString(formData.referenceFace)
-        ? { face: normalizeOptionalString(formData.referenceFace) }
-        : {}),
-      ...(normalizeOptionalString(formData.referenceBody)
-        ? { body: normalizeOptionalString(formData.referenceBody) }
-        : {}),
+      ...(summary.assets[2]?.sourcePath ? { detail: summary.assets[2].sourcePath } : {}),
+      ...(summary.assets[3]?.sourcePath ? { scene: summary.assets[3].sourcePath } : {}),
     },
+    lighting: normalizeOptionalString(formData.lighting),
+    composition: normalizeOptionalString(formData.composition),
     description: normalizeOptionalString(formData.description),
   };
 }
@@ -215,7 +222,7 @@ export function createHttpMediaActionDispatcher(
           : buildDefaultPayload(summary, callbackUrl, config.fromGatewayToken);
       const dispatchUrl =
         summary.actionType === 'image-to-image'
-          ? `${config.url}${config.imageToImageDispatchPath}`
+          ? `${config.url}${config.dispatchPathByActionType['image-to-image'] || '/webhooks/cpp/oc/vd-shoot'}`
           : `${config.url}${config.routePrefix}/${summary.actionType}/dispatch`;
 
       // 打印请求详情（只针对 image-to-image）
@@ -248,8 +255,29 @@ export function createHttpMediaActionDispatcher(
 
         const result = await response.json().catch(() => ({}));
 
+        // 订阅 SSE（如果 Gateway 返回了 eventsPath）
+        // Gateway 响应结构: { ok: true, routeId: "...", taskId: "...", progress: { eventsPath: "..." } }
+        const responseData = result as Record<string, unknown>;
+        const routeId = (responseData.routeId as string) ||
+          (summary.actionType === 'image-to-image' ? 'cpp-vd-shoot' : `cpp-${summary.actionType}`);
+        const progressData = responseData.data as Record<string, unknown> | undefined;
+        const eventsPath = (progressData?.progress as Record<string, unknown>)?.eventsPath as
+          | string
+          | undefined;
+        const taskId = (responseData.taskId as string) ||
+          ((progressData?.taskId) as string | undefined) ||
+          summary.id;
+
+        if (options.sseManager && eventsPath) {
+          const externalTaskId = taskId;
+          await options.sseManager.subscribe(summary.id, eventsPath, externalTaskId, routeId, taskId);
+        }
+
         // 派发成功，记录超时 key（2分钟后开始，5分钟超时）
-        const timeoutMinutes = parseInt(process.env.MEDIA_ACTION_TIMEOUT_MINUTES || String(DEFAULT_TIMEOUT_MINUTES), 10);
+        const timeoutMinutes = parseInt(
+          process.env.MEDIA_ACTION_TIMEOUT_MINUTES || String(DEFAULT_TIMEOUT_MINUTES),
+          10
+        );
         const timeoutStartDelay = 2; // 2分钟后才开始检查
         const timeoutKey = `${TIMEOUT_KEY_PREFIX}${summary.id}`;
         const redis = getRedisClient();
@@ -257,7 +285,7 @@ export function createHttpMediaActionDispatcher(
 
         return {
           accepted: true,
-          externalTaskId: extractExternalTaskId(result) || summary.id,
+          externalTaskId: taskId,
         };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

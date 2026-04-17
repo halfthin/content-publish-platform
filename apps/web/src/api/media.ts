@@ -351,7 +351,9 @@ export async function getMediaActionUploadItems(params: {
   limit?: number;
   cursor?: string;
 }): Promise<MediaActionUploadItemsResponse> {
-  const response = (await apiClient.get('/media/actions/uploads/items', { params })) as MediaActionUploadItemsResponse;
+  const response = (await apiClient.get('/media/actions/uploads/items', {
+    params,
+  })) as MediaActionUploadItemsResponse;
   return response;
 }
 

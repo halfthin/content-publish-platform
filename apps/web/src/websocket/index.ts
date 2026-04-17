@@ -1,8 +1,9 @@
+import type { MediaActionWebSocketMessage } from '@/types/media-action-sse.types';
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('websocket');
 
-export interface WebSocketMessage {
+export interface ContentWebSocketMessage {
   type: 'content_updated' | 'content_approved' | 'content_rejected' | 'content_published';
   data: {
     id: string;
@@ -10,6 +11,8 @@ export interface WebSocketMessage {
     [key: string]: unknown;
   };
 }
+
+export type WebSocketMessage = ContentWebSocketMessage | MediaActionWebSocketMessage;
 
 type MessageHandler = (message: WebSocketMessage) => void;
 

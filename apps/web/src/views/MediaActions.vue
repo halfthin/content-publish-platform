@@ -10,7 +10,7 @@
 
     <!-- 统计 -->
     <div class="stats-bar">
-      <el-statistic title="总数" :value="actions.length" />
+      <el-statistic title="总数" :value="store.actions.length" />
       <el-statistic title="成功" :value="successCount" />
       <el-statistic title="失败" :value="failedCount" />
       <el-statistic title="进行中" :value="runningCount" />
@@ -75,7 +75,7 @@
     </div>
 
     <!-- 详情弹窗 -->
-    <el-dialog v-model="detailVisible" title="动作详情" width="600px">
+    <el-dialog v-model="detailVisible" title="动作详情" width="700px" style="max-height:80vh;overflow-y:auto">
       <div v-if="currentAction" class="action-detail">
         <el-descriptions :column="2" border>
           <el-descriptions-item label="动作类型">{{ getActionLabel(currentAction.actionType) }}</el-descriptions-item>
@@ -146,17 +146,17 @@
 <script setup lang="ts">
 import { Refresh } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import {
   deleteMediaAction,
   getMediaAction,
-  getMediaActions,
   getMediaThumbUrl,
   type MediaActionSummary,
   retryMediaAction,
 } from '@/api/media';
+import { useMediaActionsStore } from '@/stores/media-actions.store';
 
-const actions = ref<MediaActionSummary[]>([]);
+const store = useMediaActionsStore();
 const loading = ref(false);
 const statusFilter = ref('');
 const detailVisible = ref(false);
@@ -164,15 +164,15 @@ const currentAction = ref<MediaActionSummary | null>(null);
 const retrying = ref(false);
 
 const filteredActions = computed(() => {
-  if (!statusFilter.value) return actions.value;
-  return actions.value.filter((a) => a.status === statusFilter.value);
+  if (!statusFilter.value) return store.actions;
+  return store.actions.filter((a) => a.status === statusFilter.value);
 });
 
-const successCount = computed(() => actions.value.filter((a) => a.status === 'SUCCESS').length);
-const failedCount = computed(() => actions.value.filter((a) => a.status === 'FAILED').length);
+const successCount = computed(() => store.actions.filter((a) => a.status === 'SUCCESS').length);
+const failedCount = computed(() => store.actions.filter((a) => a.status === 'FAILED').length);
 const runningCount = computed(
   () =>
-    actions.value.filter((a) =>
+    store.actions.filter((a) =>
       ['QUEUED', 'DISPATCHING', 'DISPATCHED', 'RUNNING', 'NEEDS_AUTH'].includes(a.status)
     ).length
 );
@@ -207,7 +207,7 @@ function formatDateTime(iso: string): string {
 async function refresh() {
   loading.value = true;
   try {
-    actions.value = await getMediaActions(100);
+    await store.fetchActions(100);
   } catch (err) {
     ElMessage.error('加载失败');
   } finally {
@@ -266,13 +266,22 @@ async function deleteAction(id: string) {
 }
 
 onMounted(() => {
+  store.startListening();
   refresh();
+});
+
+onUnmounted(() => {
+  store.stopListening();
 });
 </script>
 
 <style scoped>
 .media-actions-page {
   max-width: 1200px;
+  overflow-y: auto;
+  max-height: calc(100vh - 60px);
+  padding: 20px;
+  box-sizing: border-box;
 }
 
 .page-header {
@@ -358,6 +367,8 @@ onMounted(() => {
 
 .action-detail {
   padding: 8px 0;
+  overflow-y: auto;
+  max-height: 60vh;
 }
 
 .action-detail .error-text {

@@ -87,6 +87,11 @@ import {
 import { ElMessage } from 'element-plus';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
+import {
+  createMediaActionMessageHandler,
+  isMediaActionMessage,
+  type MediaActionWebSocketMessage,
+} from '@/services/media-action-notification.service';
 import { useContentStore } from '@/stores/content.store';
 import { type WebSocketMessage, wsService } from '@/websocket';
 
@@ -111,9 +116,22 @@ const activeMenu = computed(() => {
   return route.path;
 });
 
+// Media action notification handler
+const mediaActionHandler = createMediaActionMessageHandler(
+  (message: MediaActionWebSocketMessage) => {
+    console.log('[App] Media action notification:', message.type, message.data);
+  }
+);
+
 // WebSocket 消息处理
 function handleWebSocketMessage(message: WebSocketMessage) {
   console.log('WebSocket message received:', message);
+
+  // Handle media action notifications
+  if (isMediaActionMessage(message)) {
+    mediaActionHandler(message as unknown as { type: string; [key: string]: unknown });
+    return;
+  }
 
   switch (message.type) {
     case 'content_updated':
@@ -222,6 +240,6 @@ html, body {
   padding: 0;
   background-color: #f5f7fa;
   height: calc(100vh - 60px);
-  overflow: hidden;
+  overflow-y: auto;
 }
 </style>

@@ -2,6 +2,7 @@ import { Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { createLogger } from '../config/logger';
 import { createHttpMediaActionDispatcher } from '../services/media-action-dispatcher';
+import { getMediaActionSSEManager } from '../services/media-action-sse-manager';
 import type {
   MediaActionDispatcher,
   MediaActionExecutor,
@@ -113,11 +114,13 @@ let mediaActionExecutor: BullMQMediaActionExecutor | null = null;
 export function getMediaActionQueueExecutor(options?: {
   store?: MediaActionStore;
   dispatcher?: MediaActionDispatcher;
+  sseManager?: ReturnType<typeof getMediaActionSSEManager>;
 }): MediaActionExecutor {
   if (!mediaActionExecutor) {
+    const sseManager = options?.sseManager || getMediaActionSSEManager();
     mediaActionExecutor = new BullMQMediaActionExecutor(
       options?.store || createRedisMediaActionStore(),
-      options?.dispatcher || createHttpMediaActionDispatcher()
+      options?.dispatcher || createHttpMediaActionDispatcher({ sseManager })
     );
   }
 

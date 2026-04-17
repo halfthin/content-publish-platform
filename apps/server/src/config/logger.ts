@@ -16,7 +16,8 @@ if (!existsSync(LOG_DIR)) {
 const consoleSink = (record: LogRecord) => {
   // 过滤掉高频 request 日志 - 检查 message 是否包含 path
   if (record.level === 'debug' && record.message) {
-    const msgStr = typeof record.message === 'string' ? record.message : JSON.stringify(record.message);
+    const msgStr =
+      typeof record.message === 'string' ? record.message : JSON.stringify(record.message);
     if (msgStr.includes('"path":"/api/') || msgStr.includes('"path":"/health"')) {
       return; // 跳过 request 日志
     }

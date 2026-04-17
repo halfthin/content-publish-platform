@@ -422,9 +422,13 @@ export function setupMediaActionRoutes(options: SetupMediaActionRoutesOptions = 
           const { provider, '*': filePath } = params as { provider: string; '*': string };
           try {
             const { buffer, mimeType } = await readUploadFile(provider, filePath);
+            const headers: Record<string, string> = {
+              'Content-Type': mimeType,
+              'Cache-Control': 'public, max-age=300',
+            };
             set.headers['Content-Type'] = mimeType;
             set.headers['Cache-Control'] = 'public, max-age=300';
-            return buffer;
+            return new Response(buffer, { headers });
           } catch (err) {
             const msg = err instanceof Error ? err.message : 'Read failed';
             const isNotFound =

@@ -52,7 +52,7 @@
         <div class="reference-grid">
           <article class="reference-card">
             <div class="reference-card-top">
-              <strong>product</strong>
+              <strong>产品图（product）</strong>
               <el-tag type="primary" size="small">第 1 张</el-tag>
             </div>
             <div v-if="productReference" class="reference-preview">
@@ -72,7 +72,7 @@
 
           <article class="reference-card">
             <div class="reference-card-top">
-              <strong>outfit</strong>
+              <strong>搭配图（outfit）</strong>
               <el-tag size="small">第 2 张</el-tag>
             </div>
             <div v-if="outfitReference" class="reference-preview">
@@ -89,39 +89,44 @@
             </div>
             <el-empty v-else description="可选，取第 2 张图片" :image-size="72" />
           </article>
-
-          <article class="reference-card">
-            <div class="reference-card-top">
-              <strong>face</strong>
-              <el-tag size="small" type="info">手动输入</el-tag>
-            </div>
-            <el-input
-              v-model="form.referenceFace"
-              :disabled="isPersonSelectionActive"
-              placeholder="支持公网 URL / 绝对路径 / 相对路径"
-              clearable
-              @input="handleReferenceInputChange"
-            />
-          </article>
-
-          <article class="reference-card">
-            <div class="reference-card-top">
-              <strong>body</strong>
-              <el-tag size="small" type="info">手动输入</el-tag>
-            </div>
-            <el-input
-              v-model="form.referenceBody"
-              :disabled="isPersonSelectionActive"
-              placeholder="支持公网 URL / 绝对路径 / 相对路径"
-              clearable
-              @input="handleReferenceInputChange"
-            />
-          </article>
         </div>
 
-        <div class="mutual-exclusive-tip">
-          <el-tag size="small" type="warning">互斥规则</el-tag>
-          <span>person 与 face/body 二选一。选择 person 后会清空并禁用 face/body；填写 face/body 后会清空 person。</span>
+        <div v-if="detailReferences.length > 0" class="detail-gallery">
+          <div class="detail-gallery-header">
+            <strong>细节图（detail）</strong>
+            <el-tag size="small" type="info">{{ detailReferences.length }} 张</el-tag>
+          </div>
+          <div class="detail-gallery-grid">
+            <div
+              v-for="asset in detailReferences"
+              :key="asset.assetKey"
+              class="detail-gallery-item"
+            >
+              <SmartMediaImage
+                :src="asset.thumbUrl"
+                :alt="asset.filename"
+                :title="asset.parentPath"
+                variant="square"
+              />
+              <div class="detail-gallery-name">{{ asset.filename }}</div>
+            </div>
+          </div>
+        </div>
+        <div v-else class="detail-empty">
+          <span>第 3 张起自动作为细节图（detail）</span>
+        </div>
+
+        <div class="scene-input-card">
+          <div class="scene-input-header">
+            <strong>场景图（scene）</strong>
+            <el-tag size="small" type="info">与场景描述二选一</el-tag>
+          </div>
+          <el-input
+            v-model="form.scene_file"
+            placeholder="支持公网 URL / 绝对路径 / 相对路径；填写后场景描述自动清空"
+            clearable
+            @input="handleSceneFileChange"
+          />
         </div>
 
         <div v-if="currentReferenceAssets.length > 0" class="ordered-reference-list">
@@ -165,9 +170,7 @@
                 collapse-tags
                 collapse-tags-tooltip
                 clearable
-                :disabled="hasManualReferenceInput"
-                placeholder="可多选人物；与 face/body 互斥"
-                @change="handlePersonChange"
+                placeholder="可多选人物"
               >
                 <el-option
                   v-for="option in imageToImagePersonOptions"
@@ -193,6 +196,26 @@
                   :value="option"
                 />
               </el-select>
+            </el-form-item>
+
+            <el-form-item label="scene">
+              <el-input v-model="form.scene" clearable placeholder="场景描述，如：咖啡馆、街道、影棚" />
+            </el-form-item>
+
+            <el-form-item label="style">
+              <el-input v-model="form.style" clearable placeholder="风格，如：日系、韩系、复古" />
+            </el-form-item>
+
+            <el-form-item label="mood">
+              <el-input v-model="form.mood" clearable placeholder="氛围，如：清新、浪漫、神秘" />
+            </el-form-item>
+
+            <el-form-item label="lighting">
+              <el-input v-model="form.lighting" clearable placeholder="光线，如：自然光、暖色调、冷色调" />
+            </el-form-item>
+
+            <el-form-item label="composition">
+              <el-input v-model="form.composition" clearable placeholder="构图，如：中心构图、三分法" />
             </el-form-item>
 
             <el-form-item label="dryRun">
@@ -356,7 +379,7 @@
       </div>
 
       <div class="result-viewer-layout">
-        <div class="result-viewer-main">
+        <div class="result-viewer-main" style="width: 100%">
           <template v-if="submittedAction">
             <div class="result-summary-grid">
               <article class="result-summary-card">
@@ -450,79 +473,6 @@
           />
         </div>
 
-        <aside class="result-viewer-side">
-          <div class="result-side-header">
-            <strong>最近图生图任务</strong>
-            <el-tag size="small" type="info">{{ recentImageActions.length }}</el-tag>
-          </div>
-
-          <div v-if="recentImageActions.length > 0" class="recent-action-list">
-            <div
-              v-for="action in recentImageActions"
-              :key="action.id"
-              :class="[
-                'recent-action-item',
-                {
-                  active: action.id === currentActionId,
-                  'recent-action-item--highlight': action.id === highlightedActionId,
-                },
-              ]"
-              :data-action-id="action.id"
-              role="button"
-              tabindex="0"
-              :aria-pressed="action.id === currentActionId"
-              @click="openAction(action.id)"
-              @keydown.enter="openAction(action.id)"
-              @keydown.space.prevent="openAction(action.id)"
-            >
-              <div class="recent-action-top">
-                <div class="recent-action-title-block">
-                  <span class="recent-action-title">
-                    {{ readRecentActionTitle(action) }}
-                  </span>
-                  <el-tag
-                    v-if="action.id === currentActionId"
-                    size="small"
-                    type="primary"
-                    effect="plain"
-                  >
-                    当前查看
-                  </el-tag>
-                </div>
-                <el-tag size="small" :type="getRecentActionStatusTagType(action.status)">
-                  {{ formatActionStatus(action.status) }}
-                </el-tag>
-              </div>
-              <div class="recent-action-meta">{{ formatDateTime(action.updatedAt) }}</div>
-              <div class="recent-action-meta">
-                {{ readRecentActionSummary(action) || '等待回调结果' }}
-              </div>
-
-              <div class="recent-action-actions">
-                <el-button
-                  v-if="canRetryAction(action)"
-                  size="small"
-                  type="primary"
-                  text
-                  :loading="retryingActionId === action.id"
-                  @click.stop="retryActionById(action.id)"
-                >
-                  重试
-                </el-button>
-                <el-button
-                  size="small"
-                  type="danger"
-                  text
-                  :loading="deletingActionId === action.id"
-                  @click.stop="deleteActionById(action.id)"
-                >
-                  删除
-                </el-button>
-              </div>
-            </div>
-          </div>
-          <el-empty v-else description="暂无最近图生图任务" :image-size="64" />
-        </aside>
       </div>
     </section>
   </div>
@@ -575,8 +525,11 @@ const form = reactive({
   productCode: '',
   count: 1 as number | null,
   dryRun: false,
-  referenceFace: '',
-  referenceBody: '',
+  scene: '',
+  style: '',
+  mood: '',
+  lighting: '',
+  composition: '',
   description: '',
 });
 
@@ -597,12 +550,7 @@ const currentReferenceAssets = computed<ReferenceAssetLike[]>(() => {
 
 const productReference = computed(() => currentReferenceAssets.value[0] || null);
 const outfitReference = computed(() => currentReferenceAssets.value[1] || null);
-const hasManualReferenceInput = computed(() => {
-  return Boolean(
-    normalizeOptionalString(form.referenceFace) || normalizeOptionalString(form.referenceBody)
-  );
-});
-const isPersonSelectionActive = computed(() => form.personValues.length > 0);
+const detailReferences = computed(() => currentReferenceAssets.value.slice(2));
 const productCodeOptions = computed(() => {
   const optionSet = new Set(
     collectProductCodesFromPaths(
@@ -649,7 +597,7 @@ const recentImageActions = computed(() =>
 const resultView = computed(() => extractMediaActionResultView(submittedAction.value));
 
 const payloadPreview = computed(() => {
-  return {
+  const base = {
     taskId: currentActionId.value || '<提交后生成>',
     callback: {
       url: '<由后端自动拼装 callback url>',
@@ -658,27 +606,30 @@ const payloadPreview = computed(() => {
     mode: form.mode,
     person: form.personValues.length > 0 ? form.personValues.join(',') : null,
     productCode: normalizeOptionalString(form.productCode),
-    scene: null,
-    style: null,
-    mood: null,
     count: normalizeCount(form.count),
-    size: null,
-    model: null,
     dryRun: form.dryRun,
     referenceImages: {
       ...(productReference.value
         ? { product: getReferencePayloadPath(productReference.value) }
         : {}),
       ...(outfitReference.value ? { outfit: getReferencePayloadPath(outfitReference.value) } : {}),
-      ...(normalizeOptionalString(form.referenceFace)
-        ? { face: normalizeOptionalString(form.referenceFace) }
+      ...(detailReferences.value.length > 0
+        ? { detail: detailReferences.value.map(getReferencePayloadPath) }
         : {}),
-      ...(normalizeOptionalString(form.referenceBody)
-        ? { body: normalizeOptionalString(form.referenceBody) }
+      ...(normalizeOptionalString(form.scene_file)
+        ? { scene: normalizeOptionalString(form.scene_file) }
         : {}),
     },
-    description: normalizeOptionalString(form.description),
   };
+  // 只添加有值的可选字段
+  const optional: Record<string, unknown> = {};
+  if (normalizeOptionalString(form.scene)) optional.scene = normalizeOptionalString(form.scene);
+  if (normalizeOptionalString(form.style)) optional.style = normalizeOptionalString(form.style);
+  if (normalizeOptionalString(form.mood)) optional.mood = normalizeOptionalString(form.mood);
+  if (normalizeOptionalString(form.lighting)) optional.lighting = normalizeOptionalString(form.lighting);
+  if (normalizeOptionalString(form.composition)) optional.composition = normalizeOptionalString(form.composition);
+  if (normalizeOptionalString(form.description)) optional.description = normalizeOptionalString(form.description);
+  return { ...base, ...optional };
 });
 
 const payloadPreviewJson = computed(() => JSON.stringify(payloadPreview.value, null, 2));
@@ -714,21 +665,21 @@ function readActionErrorMessage(error: unknown, fallback: string) {
 }
 
 function toFormDataPayload() {
-  return {
+  const raw: Record<string, unknown> = {
     mode: form.mode,
     person: form.personValues.length > 0 ? form.personValues.join(',') : null,
     productCode: normalizeOptionalString(form.productCode),
-    scene: null,
-    style: null,
-    mood: null,
     count: normalizeCount(form.count),
-    size: null,
-    model: null,
     dryRun: form.dryRun,
-    referenceFace: normalizeOptionalString(form.referenceFace),
-    referenceBody: normalizeOptionalString(form.referenceBody),
+    scene: normalizeOptionalString(form.scene),
+    style: normalizeOptionalString(form.style),
+    mood: normalizeOptionalString(form.mood),
+    lighting: normalizeOptionalString(form.lighting),
+    composition: normalizeOptionalString(form.composition),
     description: normalizeOptionalString(form.description),
   };
+  // 过滤掉所有 null/undefined 值
+  return Object.fromEntries(Object.entries(raw).filter(([, v]) => v != null));
 }
 
 function applyActionToForm(action: MediaActionSummary) {
@@ -758,33 +709,17 @@ function applyActionToForm(action: MediaActionSummary) {
         : 1;
   form.count = Number.isFinite(nextCount) ? nextCount : 1;
   form.dryRun = Boolean(formData.dryRun);
-  form.referenceFace =
-    form.personValues.length > 0
-      ? ''
-      : typeof formData.referenceFace === 'string'
-        ? formData.referenceFace
-        : '';
-  form.referenceBody =
-    form.personValues.length > 0
-      ? ''
-      : typeof formData.referenceBody === 'string'
-        ? formData.referenceBody
-        : '';
+  form.scene = typeof formData.scene === 'string' ? formData.scene : '';
+  form.style = typeof formData.style === 'string' ? formData.style : '';
+  form.mood = typeof formData.mood === 'string' ? formData.mood : '';
+  form.lighting = typeof formData.lighting === 'string' ? formData.lighting : '';
+  form.composition = typeof formData.composition === 'string' ? formData.composition : '';
   form.description = typeof formData.description === 'string' ? formData.description : '';
   lastAppliedActionId.value = action.id;
 }
 
 function handlePersonChange() {
-  if (form.personValues.length > 0) {
-    form.referenceFace = '';
-    form.referenceBody = '';
-  }
-}
-
-function handleReferenceInputChange() {
-  if (hasManualReferenceInput.value && form.personValues.length > 0) {
-    form.personValues = [];
-  }
+  // person selection change handler
 }
 
 function getReferencePayloadPath(asset: ReferenceAssetLike) {
@@ -1028,10 +963,7 @@ async function submitImageToImageAction() {
     return;
   }
 
-  if (form.personValues.length > 0 && hasManualReferenceInput.value) {
-    ElMessage.warning('person 与 face/body 互斥，请二选一');
-    return;
-  }
+
 
   submitting.value = true;
   pageError.value = '';

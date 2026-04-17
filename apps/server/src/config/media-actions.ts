@@ -34,7 +34,7 @@ export interface MediaActionGatewayConfig {
   fromGatewayToken: string;
   callbackBaseUrl: string;
   routePrefix: string;
-  imageToImageDispatchPath: string;
+  dispatchPathByActionType: Partial<Record<MediaActionType, string>>;
 }
 
 export const IMAGE_TO_IMAGE_MODES: ImageToImageMode[] = [
@@ -91,7 +91,9 @@ export function getMediaActionGatewayConfig(): MediaActionGatewayConfig {
       process.env.MEDIA_ACTION_FROM_GATEWAY_TOKEN || gatewayConfig.fromGatewayToken || '',
     callbackBaseUrl: process.env.API_BASE_URL || 'http://localhost:3000',
     routePrefix: process.env.MEDIA_ACTION_GATEWAY_ROUTE_PREFIX || '/webhooks/cpp/media-actions',
-    imageToImageDispatchPath:
-      process.env.MEDIA_ACTION_IMAGE_TO_IMAGE_DISPATCH_PATH || '/webhooks/cpp/oc/vd-shoot',
+    dispatchPathByActionType: {
+      'image-to-image':
+        process.env.MEDIA_ACTION_IMAGE_TO_IMAGE_DISPATCH_PATH || '/webhooks/cpp/oc/vd-shoot',
+    },
   };
 }

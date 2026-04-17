@@ -8,9 +8,9 @@ import {
   type MediaActionType,
 } from '../config/media-actions';
 import { getRedisClient } from '../config/redis';
+import { clearMediaActionTimeout } from './media-action-dispatcher';
 import type { MediaLibraryService } from './media-library.service';
 import { MediaLibraryError } from './media-library.service';
-import { clearMediaActionTimeout } from './media-action-dispatcher';
 
 const SUMMARY_KEY_PREFIX = 'media:action:summary:';
 const EXTERNAL_KEY_PREFIX = 'media:action:external:';
