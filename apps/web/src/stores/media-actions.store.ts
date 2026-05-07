@@ -1,9 +1,8 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import type { MediaActionSummary } from '@/api/media';
-import type { MediaActionWebSocketMessage } from '@/types/media-action-sse.types';
 import { registerMediaActionNotifications } from '@/services/media-action-notification.service';
-import { ElNotification } from 'element-plus';
+import type { MediaActionWebSocketMessage } from '@/types/media-action-sse.types';
 
 export const useMediaActionsStore = defineStore('media-actions', () => {
   const actions = ref<MediaActionSummary[]>([]);
@@ -15,24 +14,21 @@ export const useMediaActionsStore = defineStore('media-actions', () => {
   }
 
   function updateActionFromWebSocket(message: MediaActionWebSocketMessage) {
-    const { data } = message;
-    const jobId = data.jobId;
+    const jobId = message.data.jobId;
 
     const index = actions.value.findIndex((a) => a.id === jobId);
     if (index === -1) return;
 
     const action = actions.value[index];
-    let updated = false;
 
     if (message.type === 'media_action_done') {
-      updated = true;
       actions.value[index] = {
         ...action,
         status: 'SUCCESS',
         updatedAt: new Date().toISOString(),
       };
     } else if (message.type === 'media_action_failed') {
-      updated = true;
+      const { data } = message;
       actions.value[index] = {
         ...action,
         status: data.status === 'needs-auth' ? 'NEEDS_AUTH' : 'FAILED',
@@ -40,17 +36,19 @@ export const useMediaActionsStore = defineStore('media-actions', () => {
         updatedAt: new Date().toISOString(),
       };
     } else if (message.type === 'media_action_progress') {
-      // Update progress-related fields but keep current status
-      // RUNNING phase shows in progress
+      const { data } = message;
+      // 只记录日志，不更新 UI 状态（进度阶段不需要刷新界面）
       if (data.phase) {
-        console.log(`[MediaActions] Progress for ${jobId}: ${data.phaseLabel || data.phase} (${data.progress != null ? Math.round(data.progress * 100) : 0}%)`);
+        const pct = data.progress != null ? Math.round(data.progress * 100) : 0;
+        console.log(
+          `[MediaActions] Progress for ${jobId}: ${data.phaseLabel || data.phase} (${pct}%)`
+        );
       }
+      return; // progress 不需要触发数组更新
     }
 
-    if (updated) {
-      // Trigger reactivity by replacing the array
-      actions.value = [...actions.value];
-    }
+    // 触发响应式更新
+    actions.value = [...actions.value];
   }
 
   function startListening() {

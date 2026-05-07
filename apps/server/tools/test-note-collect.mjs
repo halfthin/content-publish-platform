@@ -14,7 +14,7 @@ async function main() {
   
   try {
     // 加载 Cookie
-    const cookiePath = '/home/halfthin/dev/content-publish-platform/.workspace/config/xiaohongshu.cookies.ts';
+    const cookiePath = '/home/halfthin/dev/sop/content-publish-platform/.workspace/config/xiaohongshu.cookies.ts';
     const cookieContent = await readFile(cookiePath, 'utf-8');
     const match = cookieContent.match(/export const XIAOHONGSHU_COOKIES = (\[.*?\]);/s);
     
@@ -156,7 +156,7 @@ async function main() {
       console.log(`✅ 评论 (chat): ${collectedData.commentCount}`);
       
       // 保存结果
-      const outputFile = `/home/halfthin/dev/content-publish-platform/.workspace/tests/note-collected-${new Date().toISOString().slice(0, 19)}.json`;
+      const outputFile = `/home/halfthin/dev/sop/content-publish-platform/.workspace/tests/note-collected-${new Date().toISOString().slice(0, 19)}.json`;
       await writeFile(outputFile, JSON.stringify(collectedData, null, 2));
       console.log(`\n💾 结果已保存到：${outputFile}`);
     } else {

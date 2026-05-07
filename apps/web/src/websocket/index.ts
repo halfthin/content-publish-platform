@@ -75,9 +75,12 @@ class WebSocketService {
    * 获取 WebSocket URL
    */
   private getWebSocketUrl(): string {
-    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
-    // 将 http 转换为 ws
-    return apiBaseUrl.replace('http', 'ws').replace('/api', '/ws');
+    const wsBaseUrl = import.meta.env.VITE_WS_URL;
+    if (wsBaseUrl) return wsBaseUrl;
+    // 开发模式：直连 server 50000
+    // 生产模式：通过同源 /ws 代理
+    if (import.meta.env.DEV) return 'ws://localhost:50000/ws';
+    return '/ws';
   }
 
   /**

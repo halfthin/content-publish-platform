@@ -49,6 +49,18 @@ export type PublishJob = Job<PublishJobData, PublishJobResult>;
 const QUEUE_NAME = 'publish-jobs';
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379/0';
 
+function sanitizeConnectionUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.password) {
+      parsed.password = '***';
+    }
+    return parsed.toString();
+  } catch {
+    return '<invalid redis url>';
+  }
+}
+
 /**
  * 发布队列管理类
  */
@@ -80,7 +92,7 @@ export class PublishQueue {
       },
     });
 
-    logger.info('Publish queue initialized', { redis: REDIS_URL });
+    logger.info('Publish queue initialized', { redis: sanitizeConnectionUrl(REDIS_URL) });
   }
 
   /**

@@ -85,7 +85,7 @@ async function main() {
     
     // 保存 HTML
     const html = await page.content();
-    fs.writeFileSync('/home/halfthin/dev/content-publish-platform/.workspace/debug/user-profile-verify.html', html);
+    fs.writeFileSync('/home/halfthin/dev/sop/content-publish-platform/.workspace/debug/user-profile-verify.html', html);
     console.log('\n✅ HTML 已保存\n');
     
     await browser.close();

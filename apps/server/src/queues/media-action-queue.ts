@@ -50,6 +50,7 @@ class BullMQMediaActionExecutor implements MediaActionExecutor {
     this.worker = new Worker<MediaActionJobData>(
       QUEUE_NAME,
       async (job) => {
+        console.log('[Queue Worker] received job:', job.data.jobId);
         const current = await this.store.get(job.data.jobId);
         if (!current) {
           throw new Error(`Media action not found: ${job.data.jobId}`);
@@ -62,7 +63,9 @@ class BullMQMediaActionExecutor implements MediaActionExecutor {
         };
         await this.store.put(dispatching);
 
+        console.log('[Queue Worker] dispatching job:', job.data.jobId);
         const result = await this.dispatcher.dispatch(dispatching);
+        console.log('[Queue Worker] dispatch result:', result);
         if (!result.accepted) {
           await this.store.put({
             ...dispatching,

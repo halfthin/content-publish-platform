@@ -114,7 +114,7 @@ async function main() {
     }
     
     // 保存结果
-    const resultFile = '/home/halfthin/dev/content-publish-platform/.workspace/tests/note-detail-final-verify.json';
+    const resultFile = '/home/halfthin/dev/sop/content-publish-platform/.workspace/tests/note-detail-final-verify.json';
     fs.writeFileSync(resultFile, JSON.stringify(results, null, 2));
     console.log(`\n✅ 验证结果已保存：${resultFile}\n`);
     

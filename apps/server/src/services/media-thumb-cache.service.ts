@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
-import { dirname, extname, join, resolve } from 'node:path';
+import { extname, join, resolve } from 'node:path';
 import sharp from 'sharp';
 import { createLogger } from '../config/logger';
 

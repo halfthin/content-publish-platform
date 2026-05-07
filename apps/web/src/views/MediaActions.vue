@@ -46,8 +46,18 @@
           <strong>{{ getActionLabel(action.actionType) }}</strong>
           <el-tag :type="getStatusType(action.status)" size="small">{{ action.status }}</el-tag>
         </div>
+        <div class="action-card-thumbs">
+          <img
+            v-for="asset in action.assets.slice(0, 4)"
+            :key="asset.assetKey"
+            :src="getMediaThumbUrl(asset.assetKey)"
+            class="action-card-thumb"
+            alt="ref"
+          />
+          <span v-if="action.assets.length > 4" class="action-card-thumb-more">+{{ action.assets.length - 4 }}</span>
+        </div>
         <div class="action-card-meta">
-          {{ formatDateTime(action.createdAt) }} · {{ action.assets.length }} 张图片
+          {{ formatDateTime(action.createdAt) }} · {{ action.operator || '' }}
         </div>
         <div v-if="action.operator" class="action-card-detail">操作人：{{ action.operator }}</div>
         <div v-if="action.externalTaskId" class="action-card-detail">
@@ -56,7 +66,7 @@
         <div v-if="action.error" class="action-card-error">{{ action.error }}</div>
         <div class="action-card-actions">
           <el-button
-            v-if="['FAILED', 'NEEDS_AUTH'].includes(action.status)"
+            v-if="['FAILED', 'NEEDS_AUTH', 'SUCCESS'].includes(action.status)"
             type="warning"
             size="small"
             @click.stop="retryAction(action.id)"
@@ -131,7 +141,7 @@
       <template #footer>
         <el-button @click="detailVisible = false">关闭</el-button>
         <el-button
-          v-if="currentAction && ['FAILED', 'NEEDS_AUTH'].includes(currentAction.status)"
+          v-if="currentAction && ['FAILED', 'NEEDS_AUTH', 'SUCCESS'].includes(currentAction.status)"
           type="warning"
           :loading="retrying"
           @click="retryCurrentAction"
@@ -146,7 +156,7 @@
 <script setup lang="ts">
 import { Refresh } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import {
   deleteMediaAction,
   getMediaAction,
@@ -265,13 +275,21 @@ async function deleteAction(id: string) {
   }
 }
 
-onMounted(() => {
-  store.startListening();
-  refresh();
-});
+// 当 store.actions 中的项目被 WebSocket 更新时，同步到 currentAction
+watch(
+  () => store.actions,
+  (newActions) => {
+    if (!currentAction.value) return;
+    const updated = newActions.find((a) => a.id === currentAction.value?.id);
+    if (updated) {
+      currentAction.value = updated;
+    }
+  },
+  { deep: true }
+);
 
-onUnmounted(() => {
-  store.stopListening();
+onMounted(() => {
+  refresh();
 });
 </script>
 
@@ -342,10 +360,23 @@ onUnmounted(() => {
   margin-bottom: 8px;
 }
 
-.action-card-meta {
-  font-size: 12px;
-  color: #64748b;
-  margin-bottom: 4px;
+.action-card-thumbs {
+  display: flex;
+  gap: 4px;
+  margin: 6px 0;
+  align-items: center;
+}
+.action-card-thumb {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid #e4e7ed;
+}
+.action-card-thumb-more {
+  font-size: 11px;
+  color: #909399;
+  padding-left: 2px;
 }
 
 .action-card-detail {

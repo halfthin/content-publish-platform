@@ -17,7 +17,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # 配置
-PROJECT_DIR="/home/halfthin/dev/content-publish-platform"
+PROJECT_DIR="/home/halfthin/dev/sop/content-publish-platform"
 SERVER_DIR="${PROJECT_DIR}/apps/server"
 TEST_DIR="${PROJECT_DIR}/tests"
 LOG_DIR="${TEST_DIR}/logs"

@@ -10,6 +10,7 @@ export interface SelectedMediaItem {
   thumbUrl: string;
   fileUrl: string;
   mimeType: string;
+  tags?: string[];
 }
 
 type SelectionMovePosition = 'before' | 'after';

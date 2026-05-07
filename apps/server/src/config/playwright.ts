@@ -61,47 +61,24 @@ export class BrowserPool {
     }
 
     try {
-      // 检查是否使用 Browserless 远程浏览器
-      const browserlessUrl = process.env.BROWSERLESS_URL;
+      // 本地 Playwright 主路径（Ubuntu Server / 无 UI 服务器）
+      this.browser = await chromium.launch({
+        headless: this.config.headless,
+        slowMo: this.config.slowMo,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--disable-gpu',
+          '--window-size=1920,1080',
+        ],
+      });
 
-      if (browserlessUrl) {
-        // Browserless fallback / legacy path
-        const isCDPMode = !browserlessUrl.includes('/playwright');
-
-        if (isCDPMode) {
-          const httpEndpoint = browserlessUrl.replace('ws://', 'http://');
-          this.browser = await chromium.connectOverCDP(httpEndpoint);
-          logger.info('Connected to Browserless service (fallback/legacy CDP mode)', {
-            httpEndpoint,
-          });
-        } else {
-          this.browser = await chromium.connect({
-            wsEndpoint: browserlessUrl,
-          });
-          logger.info('Connected to Browserless service (fallback/legacy Playwright mode)', {
-            wsEndpoint: browserlessUrl,
-          });
-        }
-      } else {
-        // 本地 Playwright 主路径（支持 WSL / 无 UI 服务器）
-        this.browser = await chromium.launch({
-          headless: this.config.headless,
-          slowMo: this.config.slowMo,
-          args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--disable-gpu',
-            '--window-size=1920,1080',
-          ],
-        });
-
-        logger.info('Chromium browser launched (local primary path)', {
-          headless: this.config.headless,
-          slowMo: this.config.slowMo,
-        });
-      }
+      logger.info('Chromium browser launched (local Playwright path)', {
+        headless: this.config.headless,
+        slowMo: this.config.slowMo,
+      });
     } catch (error) {
       logger.error('Failed to initialize browser', { error: String(error) });
       throw error;

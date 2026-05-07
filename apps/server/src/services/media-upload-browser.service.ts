@@ -1,7 +1,5 @@
 import { promises as fs } from 'node:fs';
 import { join, parse, posix, resolve, sep } from 'node:path';
-import { createLogger } from '../config/logger';
-import { getMediaActionGatewayConfig } from '../config/media-actions';
 
 const PROJECT_ROOT = resolve(__dirname, '../../../..');
 const CONTENT_BASE_DIR = process.env.CONTENT_DIR
@@ -59,7 +57,7 @@ function sanitizePath(path: string): string {
   } catch {
     // 忽略解码失败的情况
   }
-  const normalized = posix.normalize('/' + decoded.replace(/^[/\\]*/, '').replace(/\.\./g, ''));
+  const normalized = posix.normalize(`/${decoded.replace(/^[/\\]*/, '').replace(/\.\./g, '')}`);
   return normalized;
 }
 
@@ -83,14 +81,6 @@ function getMimeType(filename: string): string {
     '.json': 'application/json',
   };
   return mimeMap[ext] || 'application/octet-stream';
-}
-
-async function readDirSafe(dirPath: string): Promise<string[]> {
-  try {
-    return await fs.readdir(dirPath);
-  } catch {
-    return [];
-  }
 }
 
 /**

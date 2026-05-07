@@ -36,7 +36,7 @@ async function main() {
     
     // 保存完整 HTML
     const html = await page.content();
-    fs.writeFileSync('/home/halfthin/dev/content-publish-platform/.workspace/debug/user-profile-deep.html', html);
+    fs.writeFileSync('/home/halfthin/dev/sop/content-publish-platform/.workspace/debug/user-profile-deep.html', html);
     console.log('✅ HTML 已保存\n');
     
     // 深度分析：查找所有可能的元素
@@ -193,7 +193,7 @@ async function main() {
     
     // 保存分析结果
     fs.writeFileSync(
-      '/home/halfthin/dev/content-publish-platform/.workspace/debug/user-profile-deep-analysis.json',
+      '/home/halfthin/dev/sop/content-publish-platform/.workspace/debug/user-profile-deep-analysis.json',
       JSON.stringify(analysisResults, null, 2)
     );
     console.log('\n✅ 分析结果已保存\n');

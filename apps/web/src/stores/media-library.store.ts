@@ -7,6 +7,7 @@ import type {
   MediaActionSummary,
   MediaDateTreeYear,
   MediaFavoritePath,
+  MediaFolderNode,
   MediaFolderSummary,
   MediaItem,
   MediaRoot,
@@ -34,6 +35,8 @@ export const useMediaLibraryStore = defineStore('media-library', () => {
   const roots = ref<MediaRoot[]>([]);
   const rootId = ref('dapai');
   const dateTree = ref<MediaDateTreeYear[]>([]);
+  const folderNodes = ref<MediaFolderNode[]>([]);
+  const folderStack = ref<{ name: string; relativePath: string }[]>([]);
   const favorites = ref<MediaFavoritePath[]>([]);
   const actionDefinitions = ref<MediaActionDefinition[]>([]);
   const recentActions = ref<MediaActionSummary[]>([]);
@@ -49,6 +52,10 @@ export const useMediaLibraryStore = defineStore('media-library', () => {
   const availableDatePaths = computed(() => flattenDateTree(dateTree.value));
   const availableDatePathSet = computed(() => new Set(availableDatePaths.value));
   const currentDateIndex = computed(() => availableDatePaths.value.indexOf(currentDatePath.value));
+  const isRegalRoot = computed(() => rootId.value === 'regal');
+  const currentFolderPath = computed(() =>
+    folderStack.value.length > 0 ? folderStack.value[folderStack.value.length - 1].relativePath : ''
+  );
   const canOpenNewerDate = computed(() => currentDateIndex.value > 0);
   const canOpenOlderDate = computed(
     () =>
@@ -68,13 +75,42 @@ export const useMediaLibraryStore = defineStore('media-library', () => {
 
   async function refreshRoots() {
     roots.value = await mediaApi.getMediaRoots();
-    if (roots.value[0]?.id) {
+    const knownIds = roots.value.map((r) => r.id);
+    // 只在当前 rootId 已无效时才切换默认 ROOT
+    if (
+      roots.value[0]?.id &&
+      !knownIds.includes(rootId.value) &&
+      !rootId.value.startsWith('custom:')
+    ) {
       rootId.value = roots.value[0].id;
     }
   }
 
   async function refreshDateTree() {
     dateTree.value = await mediaApi.getMediaDateTree(rootId.value);
+  }
+
+  async function refreshFolderTree(path = '') {
+    folderNodes.value = await mediaApi.getMediaFolderTree(rootId.value, path);
+  }
+
+  async function navigateFolder(name: string, relativePath: string) {
+    folderStack.value.push({ name, relativePath });
+    await refreshFolderTree(relativePath);
+    await ensurePathLoaded(relativePath);
+  }
+
+  async function navigateUp() {
+    if (folderStack.value.length === 0) return;
+    folderStack.value.pop();
+    const path =
+      folderStack.value.length > 0
+        ? folderStack.value[folderStack.value.length - 1].relativePath
+        : '';
+    await refreshFolderTree(path);
+    if (path) {
+      await ensurePathLoaded(path);
+    }
   }
 
   async function refreshFavorites() {
@@ -149,11 +185,12 @@ export const useMediaLibraryStore = defineStore('media-library', () => {
 
     setPathLoading(path, true);
     try {
-      if (availableDatePathSet.value.has(path)) {
+      // regal root 或非日期路径：直接递归加载
+      if (isRegalRoot.value || !availableDatePathSet.value.has(path)) {
+        await loadItems(path, true);
+      } else {
         const summary = await loadFolderSummary(path);
         await Promise.all(summary.folders.map((folder) => loadItems(folder.relativePath, true)));
-      } else {
-        await loadItems(path, true);
       }
     } finally {
       setPathLoading(path, false);
@@ -199,6 +236,8 @@ export const useMediaLibraryStore = defineStore('media-library', () => {
     folderSummaryByPath.value = {};
     itemsByPath.value = {};
     loadingPaths.value = {};
+    folderNodes.value = [];
+    folderStack.value = [];
   }
 
   async function initialize() {
@@ -208,20 +247,23 @@ export const useMediaLibraryStore = defineStore('media-library', () => {
     try {
       await refreshRoots();
       await Promise.all([
-        refreshDateTree(),
+        isRegalRoot.value ? refreshFolderTree() : refreshDateTree(),
         refreshFavorites(),
         refreshActionDefinitions(),
         refreshRecentActions(),
       ]);
 
-      if (!currentDatePath.value) {
+      if (!isRegalRoot.value && !currentDatePath.value) {
         const latestDatePath = getLatestDatePath(dateTree.value);
         if (latestDatePath) {
           currentDatePath.value = latestDatePath;
         }
       }
 
-      if (currentDatePath.value) {
+      if (isRegalRoot.value) {
+        // regal root: 已在 Promise.all 里调用过 refreshFolderTree，这里只需要加载根目录
+        await ensurePathLoaded('');
+      } else if (currentDatePath.value) {
         await ensurePathLoaded(currentDatePath.value);
       }
       if (workspacePaths.value.length > 0) {
@@ -293,6 +335,10 @@ export const useMediaLibraryStore = defineStore('media-library', () => {
     roots,
     rootId,
     dateTree,
+    folderNodes,
+    folderStack,
+    isRegalRoot,
+    currentFolderPath,
     favorites,
     actionDefinitions,
     recentActions,
@@ -307,6 +353,9 @@ export const useMediaLibraryStore = defineStore('media-library', () => {
     canOpenOlderDate,
     initialize,
     refreshDateTree,
+    refreshFolderTree,
+    navigateFolder,
+    navigateUp,
     refreshFavorites,
     refreshActionDefinitions,
     refreshRecentActions,

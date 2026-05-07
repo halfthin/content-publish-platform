@@ -36,7 +36,7 @@ async function main() {
     
     // 保存完整 HTML
     const html = await page.content();
-    const htmlFile = '/home/halfthin/dev/content-publish-platform/.workspace/debug/user-profile-full.html';
+    const htmlFile = '/home/halfthin/dev/sop/content-publish-platform/.workspace/debug/user-profile-full.html';
     fs.writeFileSync(htmlFile, html);
     console.log(`✅ HTML 已保存：${htmlFile}\n`);
     
@@ -157,7 +157,7 @@ async function main() {
     });
     
     // 保存分析结果
-    const resultFile = '/home/halfthin/dev/content-publish-platform/.workspace/debug/user-profile-analysis.json';
+    const resultFile = '/home/halfthin/dev/sop/content-publish-platform/.workspace/debug/user-profile-analysis.json';
     fs.writeFileSync(resultFile, JSON.stringify(results, null, 2));
     console.log(`\n✅ 分析结果已保存：${resultFile}\n`);
     

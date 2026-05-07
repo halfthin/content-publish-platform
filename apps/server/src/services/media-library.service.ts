@@ -52,6 +52,13 @@ export interface MediaDateTreeDate {
   path: string;
 }
 
+export interface MediaFolderNode {
+  name: string;
+  relativePath: string;
+  isDirectory: boolean;
+  children?: MediaFolderNode[];
+}
+
 export interface MediaFolderSummaryItem {
   name: string;
   relativePath: string;
@@ -115,6 +122,7 @@ export interface MediaLibraryService {
   getRoots(): Promise<MediaRootConfig[]>;
   resolveDirectory(rootId: string, relativePath?: string): Promise<ResolvedMediaDirectory>;
   getDateTree(rootId?: string): Promise<MediaDateTreeYear[]>;
+  getFolderTree(rootId: string, relativePath?: string): Promise<MediaFolderNode[]>;
   getFolderSummary(rootId: string, relativePath?: string): Promise<MediaFolderSummary>;
   getItems(options: GetItemsOptions): Promise<MediaItemsResult>;
   resolveAsset(assetKey: string): Promise<ResolvedMediaAsset>;
@@ -326,6 +334,11 @@ export function createMediaLibraryService(
   );
 
   function getRootConfig(rootId: string): MediaRootConfig {
+    // custom: 前缀表示用户自定义路径，直接用后面的路径
+    if (rootId.startsWith('custom:')) {
+      const customPath = rootId.slice(7); // 去掉 "custom:" 前缀
+      return { id: rootId, label: customPath.split('/').pop() || customPath, path: customPath };
+    }
     const root = roots.find((item) => item.id === rootId);
     if (!root) {
       throw createError('ROOT_NOT_FOUND', `Media root not found: ${rootId}`, 404);
@@ -570,6 +583,37 @@ export function createMediaLibraryService(
     return result;
   }
 
+  async function getFolderTree(
+    rootId: string,
+    relativePath: string = ''
+  ): Promise<MediaFolderNode[]> {
+    const { rootRealPath } = await resolveRoot(rootId);
+    const normalizedPath = normalizeRelativePath(relativePath);
+    const dirPath = normalizedPath ? join(rootRealPath, normalizedPath) : rootRealPath;
+
+    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    const nodes: MediaFolderNode[] = [];
+
+    for (const entry of entries) {
+      const entryRelPath = normalizedPath ? `${normalizedPath}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        nodes.push({
+          name: entry.name,
+          relativePath: entryRelPath,
+          isDirectory: true,
+        });
+      }
+    }
+
+    // 文件夹优先，再按名称排序
+    nodes.sort((a, b) => {
+      if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+      return a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true });
+    });
+
+    return nodes;
+  }
+
   async function getFolderSummary(
     rootId: string,
     relativePath: string = ''
@@ -683,10 +727,45 @@ export function createMediaLibraryService(
     },
     resolveDirectory,
     getDateTree,
+    getFolderTree,
     getFolderSummary,
     getItems,
     resolveAsset,
     readAsset,
     encodeAssetKey,
   };
+}
+
+/**
+ * Read tags.json from a style folder.
+ * Returns a map: { "001.png": ["product", "flat_main"], "002.png": ["outfit"] }
+ * Returns empty object if file doesn't exist.
+ */
+export async function getTagsForFolder(
+  rootId: string,
+  parentPath: string
+): Promise<Record<string, string[]>> {
+  try {
+    const { absolutePath } = await createMediaLibraryService().resolveDirectory(rootId, parentPath);
+    const tagsFilePath = join(absolutePath, 'tags.json');
+    const content = await fs.readFile(tagsFilePath, 'utf-8');
+    return JSON.parse(content) as Record<string, string[]>;
+  } catch {
+    // File doesn't exist or invalid JSON — return empty
+    return {};
+  }
+}
+
+/**
+ * Write tags.json to a style folder.
+ */
+export async function setTagsForFolder(
+  rootId: string,
+  parentPath: string,
+  tags: Record<string, string[]>
+): Promise<void> {
+  const { absolutePath } = await createMediaLibraryService().resolveDirectory(rootId, parentPath);
+  const tagsFilePath = join(absolutePath, 'tags.json');
+  const content = JSON.stringify(tags, null, 2);
+  await fs.writeFile(tagsFilePath, content, 'utf-8');
 }

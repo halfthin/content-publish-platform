@@ -40,82 +40,69 @@
     />
 
     <div class="page-grid">
+      <!-- 拖拽分配 UI -->
       <section class="card-panel page-panel">
         <div class="section-header">
           <div>
             <h3>参考图映射</h3>
-            <p class="section-helper">如果顺序不对，请返回素材库，在右侧选片篮拖拽调整顺序。</p>
+            <p class="section-helper">把左侧选片篮的图片拖入下方用途槽位</p>
           </div>
-          <el-tag type="success" size="small">{{ currentReferenceAssets.length }} 张参考图</el-tag>
         </div>
 
-        <div class="reference-grid">
-          <article class="reference-card">
-            <div class="reference-card-top">
-              <strong>产品图（product）</strong>
-              <el-tag type="primary" size="small">第 1 张</el-tag>
-            </div>
-            <div v-if="productReference" class="reference-preview">
-              <SmartMediaImage
-                :src="productReference.thumbUrl"
-                :alt="productReference.filename"
-                :title="productReference.parentPath"
-                variant="square"
-              />
-              <div class="reference-copy">
-                <div class="reference-name">{{ productReference.filename }}</div>
-                <div class="reference-path">{{ productReference.parentPath }}</div>
-              </div>
-            </div>
-            <el-empty v-else description="请至少选择 1 张图片" :image-size="72" />
-          </article>
-
-          <article class="reference-card">
-            <div class="reference-card-top">
-              <strong>搭配图（outfit）</strong>
-              <el-tag size="small">第 2 张</el-tag>
-            </div>
-            <div v-if="outfitReference" class="reference-preview">
-              <SmartMediaImage
-                :src="outfitReference.thumbUrl"
-                :alt="outfitReference.filename"
-                :title="outfitReference.parentPath"
-                variant="square"
-              />
-              <div class="reference-copy">
-                <div class="reference-name">{{ outfitReference.filename }}</div>
-                <div class="reference-path">{{ outfitReference.parentPath }}</div>
-              </div>
-            </div>
-            <el-empty v-else description="可选，取第 2 张图片" :image-size="72" />
-          </article>
-        </div>
-
-        <div v-if="detailReferences.length > 0" class="detail-gallery">
-          <div class="detail-gallery-header">
-            <strong>细节图（detail）</strong>
-            <el-tag size="small" type="info">{{ detailReferences.length }} 张</el-tag>
-          </div>
-          <div class="detail-gallery-grid">
+        <!-- 用途槽位 -->
+        <div class="use-slots">
+          <div class="use-slot use-slot--product" :class="{ 'use-slot--filled': mappedProduct }">
+            <div class="use-slot-label">产品图（product）<el-tag type="primary" size="small" style="margin-left:6px">单张</el-tag></div>
             <div
-              v-for="asset in detailReferences"
-              :key="asset.assetKey"
-              class="detail-gallery-item"
+              class="use-slot-dropzone"
+              :class="{ 'dropzone--empty': !mappedProduct }"
+              @dragover.prevent="onDragOver($event, 'product')"
+              @drop="onDropToSlot($event, 'product')"
             >
-              <SmartMediaImage
-                :src="asset.thumbUrl"
-                :alt="asset.filename"
-                :title="asset.parentPath"
-                variant="square"
-              />
-              <div class="detail-gallery-name">{{ asset.filename }}</div>
+              <div v-if="mappedProduct" class="use-slot-item">
+                <SmartMediaImage :src="mappedProduct.thumbUrl" :alt="mappedProduct.filename" variant="square" />
+                <button class="use-slot-remove" @click="removeFromSlot(mappedProduct, 'product')">×</button>
+              </div>
+              <div v-else class="use-slot-placeholder">拖入产品图</div>
+            </div>
+          </div>
+
+          <div class="use-slot use-slot--outfit" :class="{ 'use-slot--filled': mappedOutfit }">
+            <div class="use-slot-label">搭配图（outfit）<el-tag size="small" style="margin-left:6px">单张</el-tag></div>
+            <div
+              class="use-slot-dropzone"
+              :class="{ 'dropzone--empty': !mappedOutfit }"
+              @dragover.prevent="onDragOver($event, 'outfit')"
+              @drop="onDropToSlot($event, 'outfit')"
+            >
+              <div v-if="mappedOutfit" class="use-slot-item">
+                <SmartMediaImage :src="mappedOutfit.thumbUrl" :alt="mappedOutfit.filename" variant="square" />
+                <button class="use-slot-remove" @click="removeFromSlot(mappedOutfit, 'outfit')">×</button>
+              </div>
+              <div v-else class="use-slot-placeholder">拖入搭配图</div>
+            </div>
+          </div>
+
+          <div class="use-slot use-slot--detail" :class="{ 'use-slot--filled': mappedDetail.length > 0 }">
+            <div class="use-slot-label">细节图（detail）<el-tag size="small" style="margin-left:6px">多张</el-tag></div>
+            <div
+              class="use-slot-dropzone use-slot-dropzone--multi"
+              :class="{ 'dropzone--empty': mappedDetail.length === 0 }"
+              @dragover.prevent="onDragOver($event, 'detail')"
+              @drop="onDropToSlot($event, 'detail')"
+            >
+              <div v-if="mappedDetail.length > 0" class="use-slot-items">
+                <div v-for="element in mappedDetail" :key="element.assetKey" class="use-slot-item">
+                  <SmartMediaImage :src="element.thumbUrl" :alt="element.filename" variant="square" />
+                  <button class="use-slot-remove" @click="removeFromSlot(element, 'detail')">×</button>
+                </div>
+              </div>
+              <div v-else class="use-slot-placeholder">拖入细节图</div>
             </div>
           </div>
         </div>
-        <div v-else class="detail-empty">
-          <span>第 3 张起自动作为细节图（detail）</span>
-        </div>
 
+        <!-- 场景图（scene）URL 输入 -->
         <div class="scene-input-card">
           <div class="scene-input-header">
             <strong>场景图（scene）</strong>
@@ -129,11 +116,26 @@
           />
         </div>
 
-        <div v-if="currentReferenceAssets.length > 0" class="ordered-reference-list">
-          <div v-for="(item, index) in currentReferenceAssets" :key="item.assetKey" class="ordered-reference-item">
-            <span class="ordered-reference-index">{{ index + 1 }}</span>
-            <span class="ordered-reference-name">{{ item.filename }}</span>
-            <span class="ordered-reference-path">{{ item.parentPath }}</span>
+        <!-- 选片篮（来源区） -->
+        <div class="selection-basket">
+          <div class="basket-header">
+            <strong>选片篮</strong>
+            <el-tag type="success" size="small">{{ selectionBasket.length }} 张</el-tag>
+          </div>
+          <div class="basket-grid">
+            <div
+              v-for="element in selectionBasket"
+              :key="element.assetKey"
+              class="basket-item"
+              draggable="true"
+              @dragstart="onDragStart($event, element)"
+            >
+              <SmartMediaImage :src="element.thumbUrl" :alt="element.filename" :title="element.parentPath" variant="square" />
+              <div class="basket-item-name">{{ element.filename }}</div>
+            </div>
+          </div>
+          <div v-if="selectionBasket.length === 0" class="basket-empty">
+            <el-empty description="请在素材库选择图片" :image-size="48" />
           </div>
         </div>
       </section>
@@ -490,6 +492,7 @@ import {
   IMAGE_TO_IMAGE_MODE_OPTIONS,
   IMAGE_TO_IMAGE_PERSON_OPTIONS,
 } from '@/config/image-to-image';
+import { registerMediaActionNotifications } from '@/services/media-action-notification.service';
 import { useMediaLibraryStore } from '@/stores/media-library.store';
 import { useMediaSelectionStore } from '@/stores/media-selection.store';
 import { extractMediaActionResultView } from '@/utils/media-action-result';
@@ -497,7 +500,7 @@ import { collectProductCodesFromPaths } from '@/utils/product-code';
 
 type ReferenceAssetLike = Pick<
   MediaActionAssetSnapshot,
-  'assetKey' | 'filename' | 'parentPath' | 'thumbUrl' | 'fileUrl' | 'relativePath'
+  'assetKey' | 'filename' | 'parentPath' | 'rootId' | 'thumbUrl' | 'fileUrl' | 'relativePath'
 > & {
   sourcePath?: string;
 };
@@ -526,6 +529,7 @@ const form = reactive({
   count: 1 as number | null,
   dryRun: false,
   scene: '',
+  scene_file: '',
   style: '',
   mood: '',
   lighting: '',
@@ -533,7 +537,15 @@ const form = reactive({
   description: '',
 });
 
-let pollTimer: ReturnType<typeof setInterval> | null = null;
+// 拖拽映射列表
+const mappedProductList = ref<ReferenceAssetLike[]>([]);
+const mappedOutfitList = ref<ReferenceAssetLike[]>([]);
+const mappedDetailList = ref<ReferenceAssetLike[]>([]);
+const mappedProduct = computed(() => mappedProductList.value[0] || null);
+const mappedOutfit = computed(() => mappedOutfitList.value[0] || null);
+const mappedDetail = computed(() => mappedDetailList.value);
+
+let stopWsListening: (() => void) | null = null;
 let highlightTimer: ReturnType<typeof setTimeout> | null = null;
 
 const currentReferenceAssets = computed<ReferenceAssetLike[]>(() => {
@@ -548,9 +560,15 @@ const currentReferenceAssets = computed<ReferenceAssetLike[]>(() => {
   return submittedAction.value?.assets || [];
 });
 
-const productReference = computed(() => currentReferenceAssets.value[0] || null);
-const outfitReference = computed(() => currentReferenceAssets.value[1] || null);
-const detailReferences = computed(() => currentReferenceAssets.value.slice(2));
+// 选片篮：排除已映射到槽位的图片
+const selectionBasket = computed(() => {
+  const usedKeys = new Set([
+    ...mappedProductList.value.map((a) => a.assetKey),
+    ...mappedOutfitList.value.map((a) => a.assetKey),
+    ...mappedDetailList.value.map((a) => a.assetKey),
+  ]);
+  return currentReferenceAssets.value.filter((a) => !usedKeys.has(a.assetKey));
+});
 const productCodeOptions = computed(() => {
   const optionSet = new Set(
     collectProductCodesFromPaths(
@@ -591,9 +609,6 @@ const imageToImageDispatchPathname = computed(
 const canRetrySubmittedAction = computed(
   () => submittedAction.value?.status === 'FAILED' || submittedAction.value?.status === 'NEEDS_AUTH'
 );
-const recentImageActions = computed(() =>
-  mediaStore.recentActions.filter((action) => action.actionType === 'image-to-image')
-);
 const resultView = computed(() => extractMediaActionResultView(submittedAction.value));
 
 const payloadPreview = computed(() => {
@@ -609,16 +624,17 @@ const payloadPreview = computed(() => {
     count: normalizeCount(form.count),
     dryRun: form.dryRun,
     referenceImages: {
-      ...(productReference.value
-        ? { product: getReferencePayloadPath(productReference.value) }
-        : {}),
-      ...(outfitReference.value ? { outfit: getReferencePayloadPath(outfitReference.value) } : {}),
-      ...(detailReferences.value.length > 0
-        ? { detail: detailReferences.value.map(getReferencePayloadPath) }
-        : {}),
-      ...(normalizeOptionalString(form.scene_file)
-        ? { scene: normalizeOptionalString(form.scene_file) }
-        : {}),
+      product: mappedProductList.value[0]
+        ? getReferencePayloadPath(mappedProductList.value[0])
+        : undefined,
+      outfit: mappedOutfitList.value[0]
+        ? getReferencePayloadPath(mappedOutfitList.value[0])
+        : undefined,
+      detail:
+        mappedDetailList.value.length > 0
+          ? mappedDetailList.value.map(getReferencePayloadPath)
+          : undefined,
+      scene: normalizeOptionalString(form.scene_file),
     },
   };
   // 只添加有值的可选字段
@@ -626,9 +642,12 @@ const payloadPreview = computed(() => {
   if (normalizeOptionalString(form.scene)) optional.scene = normalizeOptionalString(form.scene);
   if (normalizeOptionalString(form.style)) optional.style = normalizeOptionalString(form.style);
   if (normalizeOptionalString(form.mood)) optional.mood = normalizeOptionalString(form.mood);
-  if (normalizeOptionalString(form.lighting)) optional.lighting = normalizeOptionalString(form.lighting);
-  if (normalizeOptionalString(form.composition)) optional.composition = normalizeOptionalString(form.composition);
-  if (normalizeOptionalString(form.description)) optional.description = normalizeOptionalString(form.description);
+  if (normalizeOptionalString(form.lighting))
+    optional.lighting = normalizeOptionalString(form.lighting);
+  if (normalizeOptionalString(form.composition))
+    optional.composition = normalizeOptionalString(form.composition);
+  if (normalizeOptionalString(form.description))
+    optional.description = normalizeOptionalString(form.description);
   return { ...base, ...optional };
 });
 
@@ -718,23 +737,62 @@ function applyActionToForm(action: MediaActionSummary) {
   lastAppliedActionId.value = action.id;
 }
 
-function handlePersonChange() {
-  // person selection change handler
+// Native HTML5 drag-drop handlers
+let draggedAsset: ReferenceAssetLike | null = null;
+
+function onDragStart(event: DragEvent, asset: ReferenceAssetLike) {
+  draggedAsset = asset;
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', asset.assetKey);
+  }
+}
+
+function onDragOver(event: DragEvent, _slot: 'product' | 'outfit' | 'detail') {
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move';
+  }
+}
+
+function onDropToSlot(event: DragEvent, slot: 'product' | 'outfit' | 'detail') {
+  event.preventDefault();
+  if (!draggedAsset) return;
+  const asset = draggedAsset;
+  draggedAsset = null;
+
+  if (slot === 'product') {
+    if (!mappedProductList.value.find((a) => a.assetKey === asset.assetKey)) {
+      mappedProductList.value = [asset];
+    }
+  } else if (slot === 'outfit') {
+    if (!mappedOutfitList.value.find((a) => a.assetKey === asset.assetKey)) {
+      mappedOutfitList.value = [asset];
+    }
+  } else if (slot === 'detail') {
+    if (!mappedDetailList.value.find((a) => a.assetKey === asset.assetKey)) {
+      mappedDetailList.value = [...mappedDetailList.value, asset];
+    }
+  }
+}
+
+function removeFromSlot(asset: ReferenceAssetLike, slot: 'product' | 'outfit' | 'detail') {
+  if (slot === 'product') {
+    mappedProductList.value = mappedProductList.value.filter((a) => a.assetKey !== asset.assetKey);
+  } else if (slot === 'outfit') {
+    mappedOutfitList.value = mappedOutfitList.value.filter((a) => a.assetKey !== asset.assetKey);
+  } else {
+    mappedDetailList.value = mappedDetailList.value.filter((a) => a.assetKey !== asset.assetKey);
+  }
+}
+
+function handleSceneFileChange() {
+  if (normalizeOptionalString(form.scene_file)) {
+    form.scene = '';
+  }
 }
 
 function getReferencePayloadPath(asset: ReferenceAssetLike) {
   return asset.sourcePath || asset.relativePath;
-}
-
-function isTerminalStatus(status: MediaActionSummary['status']) {
-  return status === 'SUCCESS' || status === 'FAILED';
-}
-
-function stopPolling() {
-  if (pollTimer) {
-    clearInterval(pollTimer);
-    pollTimer = null;
-  }
 }
 
 function clearHighlight() {
@@ -773,20 +831,6 @@ async function emphasizeAction(actionId: string) {
   await focusRecentActionCard(actionId);
 }
 
-function startPolling() {
-  if (
-    !currentActionId.value ||
-    pollTimer ||
-    isTerminalStatus(submittedAction.value?.status || 'QUEUED')
-  ) {
-    return;
-  }
-
-  pollTimer = setInterval(() => {
-    void loadAction(currentActionId.value || undefined);
-  }, 3000);
-}
-
 function resolveQueryJobId(value: unknown): string | null {
   if (typeof value === 'string' && value.trim()) {
     return value;
@@ -813,15 +857,8 @@ async function loadAction(jobId: string | undefined = currentActionId.value || u
     submittedAction.value = action;
     currentActionId.value = action.id;
     applyActionToForm(action);
-
-    if (isTerminalStatus(action.status)) {
-      stopPolling();
-    } else {
-      startPolling();
-    }
   } catch (error) {
     pageError.value = error instanceof Error ? error.message : '加载图生图任务失败';
-    stopPolling();
   } finally {
     loadingAction.value = false;
   }
@@ -829,10 +866,6 @@ async function loadAction(jobId: string | undefined = currentActionId.value || u
 
 async function refreshCurrentAction() {
   await Promise.all([loadAction(), mediaStore.refreshRecentActions()]);
-}
-
-function canRetryAction(action: MediaActionSummary) {
-  return action.status === 'FAILED' || action.status === 'NEEDS_AUTH';
 }
 
 async function retryActionRequest(actionId: string) {
@@ -872,7 +905,6 @@ async function retryActionById(actionId: string) {
       },
     });
     await emphasizeAction(action.id);
-    startPolling();
     ElMessage.success('已重新提交图生图任务');
   } catch (error) {
     pageError.value = readActionErrorMessage(error, '重试图生图任务失败');
@@ -911,7 +943,6 @@ async function deleteActionById(actionId: string) {
     await deleteActionRequest(actionId);
 
     if (currentActionId.value === actionId) {
-      stopPolling();
       const nextAction = mediaStore.recentActions.find(
         (action) => action.actionType === 'image-to-image' && action.id !== actionId
       );
@@ -953,8 +984,8 @@ async function deleteCurrentAction() {
 }
 
 async function submitImageToImageAction() {
-  if (selectionStore.selectedCount === 0) {
-    ElMessage.warning('请先在素材库中选择至少一张图片');
+  if (!mappedProduct.value) {
+    ElMessage.warning('请拖入至少一张产品图到产品图槽位');
     return;
   }
 
@@ -963,15 +994,17 @@ async function submitImageToImageAction() {
     return;
   }
 
-
-
   submitting.value = true;
   pageError.value = '';
 
   try {
     const action = await mediaStore.submitAction({
       actionType: 'image-to-image',
-      assets: selectionStore.selectedItems.map((item) => ({
+      assets: [
+        ...mappedProductList.value,
+        ...mappedOutfitList.value,
+        ...mappedDetailList.value,
+      ].map((item) => ({
         rootId: item.rootId,
         relativePath: item.relativePath,
       })),
@@ -991,7 +1024,6 @@ async function submitImageToImageAction() {
         jobId: action.id,
       },
     });
-    startPolling();
     await mediaStore.refreshRecentActions();
     ElMessage.success('图生图任务已提交');
   } catch (error) {
@@ -1030,51 +1062,8 @@ function formatActionStatus(status: MediaActionSummary['status']) {
   }
 }
 
-function getRecentActionStatusTagType(status: MediaActionSummary['status']) {
-  switch (status) {
-    case 'SUCCESS':
-      return 'success';
-    case 'FAILED':
-      return 'danger';
-    case 'NEEDS_AUTH':
-    case 'RUNNING':
-    case 'DISPATCHING':
-      return 'warning';
-    default:
-      return 'info';
-  }
-}
-
-function readRecentActionTitle(action: MediaActionSummary) {
-  const productCode =
-    typeof action.formData?.productCode === 'string' && action.formData.productCode.trim()
-      ? action.formData.productCode
-      : null;
-
-  return productCode || action.externalTaskId || action.id;
-}
-
-function readRecentActionSummary(action: MediaActionSummary) {
-  return extractMediaActionResultView(action).summary;
-}
-
 async function refreshRecentActions() {
   await mediaStore.refreshRecentActions();
-}
-
-function openAction(actionId: string) {
-  if (currentActionId.value === actionId) {
-    void refreshCurrentAction();
-    return;
-  }
-
-  stopPolling();
-  void router.replace({
-    name: 'MediaImageToImage',
-    query: {
-      jobId: actionId,
-    },
-  });
 }
 
 watch(
@@ -1101,19 +1090,57 @@ watch(
       return;
     }
 
-    stopPolling();
     submittedAction.value = null;
   },
   { immediate: true }
 );
 
 onBeforeUnmount(() => {
-  stopPolling();
   clearHighlight();
+  stopWsListening?.();
 });
 
+function handleWsActionUpdate(message: { data: { jobId: string } }) {
+  const { jobId } = message.data;
+  if (jobId !== submittedAction.value?.id) return;
+  // 刷新任务状态
+  void refreshCurrentAction();
+}
+
 onMounted(() => {
+  stopWsListening = registerMediaActionNotifications(handleWsActionUpdate);
   void Promise.all([refreshRecentActions(), mediaStore.refreshActionDefinitions()]);
+  // tag → 槽位映射
+  const tagToSlots: Record<string, 'product' | 'outfit' | 'detail'> = {
+    product: 'product',
+    outfit: 'outfit',
+    flat_main: 'detail',
+    sku_color: 'detail',
+    detail: 'detail',
+  };
+
+  for (const item of selectionStore.selectedItems) {
+    const itemTags: string[] = (item as { tags?: string[] }).tags || [];
+    for (const tag of itemTags) {
+      const slot = tagToSlots[tag];
+      if (
+        slot === 'product' &&
+        !mappedProductList.value.find((a) => a.assetKey === item.assetKey)
+      ) {
+        mappedProductList.value = [item];
+      } else if (
+        slot === 'outfit' &&
+        !mappedOutfitList.value.find((a) => a.assetKey === item.assetKey)
+      ) {
+        mappedOutfitList.value = [item];
+      } else if (
+        slot === 'detail' &&
+        !mappedDetailList.value.find((a) => a.assetKey === item.assetKey)
+      ) {
+        mappedDetailList.value = [...mappedDetailList.value, item];
+      }
+    }
+  }
 });
 </script>
 
@@ -1651,6 +1678,194 @@ onMounted(() => {
   100% {
     box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
   }
+}
+
+/* 拖拽分配 UI */
+.use-slots {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.use-slot {
+  background: #f8fafc;
+  border: 2px dashed #cbd5e1;
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.use-slot--filled {
+  border-color: #22c55e;
+  background: #f0fdf4;
+}
+
+.use-slot-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  display: flex;
+  align-items: center;
+}
+
+.use-slot-dropzone {
+  min-height: 80px;
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-content: flex-start;
+}
+
+.use-slot-dropzone--multi {
+  min-height: 100px;
+}
+
+.dropzone--empty {
+  border: 1px dashed #e2e8f0;
+}
+
+.use-slot-item {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: grab;
+  border: 1px solid #e4e7ed;
+}
+
+.use-slot-item:active {
+  cursor: grabbing;
+}
+
+.use-slot-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.use-slot-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  border: none;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.use-slot-item:hover .use-slot-remove {
+  opacity: 1;
+}
+
+.use-slot-placeholder {
+  width: 100%;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 12px;
+  padding: 20px 0;
+}
+
+/* 场景图 */
+.scene-input-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 20px;
+}
+
+.scene-input-header {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 8px;
+}
+
+/* 选片篮 */
+.selection-basket {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.basket-header {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.basket-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 8px;
+  min-height: 72px;
+}
+
+.basket-item {
+  width: 64px;
+  height: 64px;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: grab;
+  border: 1px solid #e4e7ed;
+  position: relative;
+}
+
+.basket-item:active {
+  cursor: grabbing;
+}
+
+.basket-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.basket-item-name {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  font-size: 9px;
+  padding: 2px 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.basket-empty {
+  padding: 16px 0;
+}
+
+/* draggable ghost */
+.sortable-ghost {
+  opacity: 0.4;
+}
+
+.sortable-chosen {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 
 @media (max-width: 1480px) {

@@ -18,6 +18,7 @@ const logger = createLogger('media-action-dispatcher');
 interface CreateHttpMediaActionDispatcherOptions {
   config?: Partial<MediaActionGatewayConfig>;
   fetchImpl?: typeof fetch;
+  trackTimeout?: boolean;
   sseManager?: {
     subscribe(
       jobId: string,
@@ -42,15 +43,6 @@ function normalizeRoutePrefix(value: string): string {
   return trimTrailingSlash(withLeadingSlash);
 }
 
-function normalizeAbsolutePath(value: string, fallback: string): string {
-  if (!value) {
-    return fallback;
-  }
-
-  const withLeadingSlash = value.startsWith('/') ? value : `/${value}`;
-  return trimTrailingSlash(withLeadingSlash);
-}
-
 function resolveGatewayConfig(
   overrides: Partial<MediaActionGatewayConfig> = {}
 ): MediaActionGatewayConfig {
@@ -64,6 +56,9 @@ function resolveGatewayConfig(
     dispatchPathByActionType: {
       ...base.dispatchPathByActionType,
       ...overrides.dispatchPathByActionType,
+      ...(overrides.imageToImageDispatchPath
+        ? { 'image-to-image': overrides.imageToImageDispatchPath }
+        : {}),
     },
   };
 }
@@ -168,6 +163,11 @@ function buildImageToImagePayload(
   callbackToken: string
 ) {
   const formData = summary.formData || {};
+  const referenceFace = normalizeOptionalString(formData.referenceFace);
+  const referenceBody = normalizeOptionalString(formData.referenceBody);
+  const lighting = normalizeOptionalString(formData.lighting);
+  const composition = normalizeOptionalString(formData.composition);
+  const description = normalizeOptionalString(formData.description);
 
   return {
     taskId: summary.id,
@@ -193,10 +193,12 @@ function buildImageToImagePayload(
       ...(summary.assets[1]?.sourcePath ? { outfit: summary.assets[1].sourcePath } : {}),
       ...(summary.assets[2]?.sourcePath ? { detail: summary.assets[2].sourcePath } : {}),
       ...(summary.assets[3]?.sourcePath ? { scene: summary.assets[3].sourcePath } : {}),
+      ...(referenceFace ? { face: referenceFace } : {}),
+      ...(referenceBody ? { body: referenceBody } : {}),
     },
-    lighting: normalizeOptionalString(formData.lighting),
-    composition: normalizeOptionalString(formData.composition),
-    description: normalizeOptionalString(formData.description),
+    ...(lighting ? { lighting } : {}),
+    ...(composition ? { composition } : {}),
+    ...(description ? { description } : {}),
   };
 }
 
@@ -227,7 +229,17 @@ export function createHttpMediaActionDispatcher(
 
       // 打印请求详情（只针对 image-to-image）
       if (summary.actionType === 'image-to-image') {
-        logger.info({ dispatchUrl, payload }, 'Image-to-image dispatch request');
+        logger.info(
+          {
+            dispatchUrl,
+            jobId: summary.id,
+            actionType: summary.actionType,
+            mode: normalizeOptionalString(summary.formData?.mode) || 'lifestyle',
+            assetCount: summary.assets.length,
+            hasCallbackToken: Boolean(config.fromGatewayToken),
+          },
+          'Image-to-image dispatch request'
+        );
       }
 
       try {
@@ -258,30 +270,36 @@ export function createHttpMediaActionDispatcher(
         // 订阅 SSE（如果 Gateway 返回了 eventsPath）
         // Gateway 响应结构: { ok: true, routeId: "...", taskId: "...", progress: { eventsPath: "..." } }
         const responseData = result as Record<string, unknown>;
-        const routeId = (responseData.routeId as string) ||
+        const routeId =
+          (responseData.routeId as string) ||
           (summary.actionType === 'image-to-image' ? 'cpp-vd-shoot' : `cpp-${summary.actionType}`);
-        const progressData = responseData.data as Record<string, unknown> | undefined;
-        const eventsPath = (progressData?.progress as Record<string, unknown>)?.eventsPath as
-          | string
-          | undefined;
-        const taskId = (responseData.taskId as string) ||
-          ((progressData?.taskId) as string | undefined) ||
-          summary.id;
+        const progressData = responseData.progress as Record<string, unknown> | undefined;
+        const eventsPath = (progressData?.eventsPath as string) || undefined;
+        const taskId = extractExternalTaskId(result) || summary.id;
 
         if (options.sseManager && eventsPath) {
           const externalTaskId = taskId;
-          await options.sseManager.subscribe(summary.id, eventsPath, externalTaskId, routeId, taskId);
+          await options.sseManager.subscribe(
+            summary.id,
+            eventsPath,
+            externalTaskId,
+            routeId,
+            taskId
+          );
         }
 
         // 派发成功，记录超时 key（2分钟后开始，5分钟超时）
-        const timeoutMinutes = parseInt(
-          process.env.MEDIA_ACTION_TIMEOUT_MINUTES || String(DEFAULT_TIMEOUT_MINUTES),
-          10
-        );
-        const timeoutStartDelay = 2; // 2分钟后才开始检查
-        const timeoutKey = `${TIMEOUT_KEY_PREFIX}${summary.id}`;
-        const redis = getRedisClient();
-        await redis.setex(timeoutKey, (timeoutMinutes + timeoutStartDelay) * 60, 'pending');
+        const shouldTrackTimeout = options.trackTimeout ?? !options.fetchImpl;
+        if (shouldTrackTimeout) {
+          const timeoutMinutes = parseInt(
+            process.env.MEDIA_ACTION_TIMEOUT_MINUTES || String(DEFAULT_TIMEOUT_MINUTES),
+            10
+          );
+          const timeoutStartDelay = 2; // 2分钟后才开始检查
+          const timeoutKey = `${TIMEOUT_KEY_PREFIX}${summary.id}`;
+          const redis = getRedisClient();
+          await redis.setex(timeoutKey, (timeoutMinutes + timeoutStartDelay) * 60, 'pending');
+        }
 
         return {
           accepted: true,

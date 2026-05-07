@@ -2,11 +2,9 @@ import { createLogger } from '../config/logger';
 import { getMediaActionGatewayConfig } from '../config/media-actions';
 import type {
   GatewaySSEProgressEvent,
-  MediaActionBroadcast,
   MediaActionDoneBroadcast,
   MediaActionFailedBroadcast,
   MediaActionProgressBroadcast,
-  SSESubscriptionKey,
   SSEOuterEventType,
 } from '../types/media-action-sse';
 import { broadcastMediaAction } from '../websocket/server';
@@ -80,11 +78,7 @@ class MediaActionSSEManager {
     });
   }
 
-  private async subscribeInternal(
-    key: string,
-    url: string,
-    signal: AbortSignal
-  ): Promise<void> {
+  private async subscribeInternal(key: string, url: string, signal: AbortSignal): Promise<void> {
     const config = getMediaActionGatewayConfig();
     const [routeId, taskId] = key.split(':');
     let fallbackRetries = 0;
@@ -270,6 +264,7 @@ class MediaActionSSEManager {
       },
     };
     broadcastMediaAction(msg);
+    console.log('[SSE Manager] broadcastProgress', JSON.stringify(msg));
   }
 
   private broadcastDone(
@@ -286,15 +281,17 @@ class MediaActionSSEManager {
         externalTaskId: sub.externalTaskId,
         event: 'done',
         status: 'success',
-        outerEvent: outerEvent === 'task' || outerEvent === 'progress'
-          ? (outerEvent as 'task' | 'progress')
-          : 'task',
+        outerEvent:
+          outerEvent === 'task' || outerEvent === 'progress'
+            ? (outerEvent as 'task' | 'progress')
+            : 'task',
         message: data.message,
         outputFiles: data.outputFiles,
         result: data.result,
       },
     };
     broadcastMediaAction(msg);
+    console.log('[SSE Manager] broadcastDone', JSON.stringify(msg));
     logger.info('Broadcast media_action_done', {
       routeId: sub.routeId,
       taskId: sub.taskId,
@@ -352,13 +349,17 @@ class MediaActionSSEManager {
       if (status === 'completed' || status === 'success') {
         this.broadcastDone(subscription, data as GatewaySSEProgressEvent, 'task');
         this.unsubscribe(subscription.routeId, subscription.taskId);
-      } else if (status === 'failed' || status === 'callback_failed' || status === 'dispatch_failed') {
+      } else if (
+        status === 'failed' ||
+        status === 'callback_failed' ||
+        status === 'dispatch_failed'
+      ) {
         this.broadcastFailed(subscription, data as GatewaySSEProgressEvent, 'task');
         this.unsubscribe(subscription.routeId, subscription.taskId);
       } else {
         this.broadcastProgress(subscription, data as GatewaySSEProgressEvent, 'task');
       }
-    } catch (err) {
+    } catch {
       logger.warn('Task details fetch failed', {
         routeId: subscription.routeId,
         taskId: subscription.taskId,

@@ -11,7 +11,6 @@ import { loadEnv } from 'bun';
 loadEnv(); // 加载 .env 文件
 
 console.log('🧪 环境变量配置:', {
-  BROWSERLESS_URL: process.env.BROWSERLESS_URL ? '已配置' : '未配置',
   NODE_ENV: process.env.NODE_ENV || 'development',
   PLAYWRIGHT_HEADLESS: process.env.PLAYWRIGHT_HEADLESS || 'true',
 });

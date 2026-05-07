@@ -374,7 +374,7 @@ async function main() {
   
   try {
     // 加载 Cookie
-    const cookiePath = '/home/halfthin/dev/content-publish-platform/.workspace/config/xiaohongshu.cookies.ts';
+    const cookiePath = '/home/halfthin/dev/sop/content-publish-platform/.workspace/config/xiaohongshu.cookies.ts';
     const cookieContent = await readFile(cookiePath, 'utf-8');
     const match = cookieContent.match(/export const XIAOHONGSHU_COOKIES = (\[.*?\]);/s);
     if (match) {
@@ -432,7 +432,7 @@ async function main() {
             noteDetail,
           };
           
-          const outputFile = '/home/halfthin/dev/content-publish-platform/.workspace/tests/smart-analyzer-result.json';
+          const outputFile = '/home/halfthin/dev/sop/content-publish-platform/.workspace/tests/smart-analyzer-result.json';
           await writeFile(outputFile, JSON.stringify(results, null, 2));
           console.log(`💾 结果已保存到：${outputFile}\n`);
           console.log('✅ 分析完成！\n');

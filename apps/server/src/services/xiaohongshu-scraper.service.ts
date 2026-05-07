@@ -133,7 +133,7 @@ export class XiaohongshuScraper {
     try {
       // 读取 Cookie 配置文件（使用绝对路径）
       const cookiePath =
-        '/home/halfthin/dev/content-publish-platform/.workspace/config/xiaohongshu.cookies.ts';
+        '/home/halfthin/dev/sop/content-publish-platform/.workspace/config/xiaohongshu.cookies.ts';
       const cookieContent = await Bun.file(cookiePath).text();
 
       // 解析 TypeScript 文件，提取 Cookie 数组

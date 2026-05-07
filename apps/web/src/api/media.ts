@@ -23,6 +23,12 @@ export interface MediaDateTreeYear {
   }>;
 }
 
+export interface MediaFolderNode {
+  name: string;
+  relativePath: string;
+  isDirectory: boolean;
+}
+
 export interface MediaFolderSummaryItem {
   name: string;
   relativePath: string;
@@ -45,6 +51,7 @@ export interface MediaItem {
   size: number;
   modifiedAt: string;
   mimeType: string;
+  tags?: string[];
 }
 
 export interface MediaItemsResponse {
@@ -222,6 +229,12 @@ export async function getMediaDateTree(rootId: string): Promise<MediaDateTreeYea
   return (await apiClient.get('/media/date-tree', { params: { rootId } })) as MediaDateTreeYear[];
 }
 
+export async function getMediaFolderTree(rootId: string, path = ''): Promise<MediaFolderNode[]> {
+  return (await apiClient.get('/media/folder-tree', {
+    params: { rootId, path },
+  })) as MediaFolderNode[];
+}
+
 export async function getMediaFolderSummary(
   rootId: string,
   path: string
@@ -362,4 +375,22 @@ export async function deleteMediaActionUploadFile(
   relativePath: string
 ): Promise<void> {
   await apiClient.delete(`/media/actions/uploads/${provider}/${relativePath}`);
+}
+
+// ========== 批量打标 API ==========
+
+export async function getMediaTags(
+  rootId: string,
+  path: string
+): Promise<Record<string, string[]>> {
+  const params = new URLSearchParams({ rootId, path });
+  return (await apiClient.get(`/media/tags?${params}`)) as Record<string, string[]>;
+}
+
+export async function setMediaTags(
+  rootId: string,
+  path: string,
+  tags: Record<string, string[]>
+): Promise<void> {
+  await apiClient.post('/media/tags', { rootId, path, tags });
 }

@@ -90,9 +90,10 @@ import { useRoute } from 'vue-router';
 import {
   createMediaActionMessageHandler,
   isMediaActionMessage,
-  type MediaActionWebSocketMessage,
 } from '@/services/media-action-notification.service';
 import { useContentStore } from '@/stores/content.store';
+import { useMediaActionsStore } from '@/stores/media-actions.store';
+import type { MediaActionWebSocketMessage } from '@/types/media-action-sse.types';
 import { type WebSocketMessage, wsService } from '@/websocket';
 
 declare global {
@@ -117,9 +118,12 @@ const activeMenu = computed(() => {
 });
 
 // Media action notification handler
+const mediaActionsStore = useMediaActionsStore();
 const mediaActionHandler = createMediaActionMessageHandler(
   (message: MediaActionWebSocketMessage) => {
     console.log('[App] Media action notification:', message.type, message.data);
+    // 全局 store 追踪所有运行中的任务
+    mediaActionsStore.updateActionFromWebSocket(message);
   }
 );
 
@@ -129,7 +133,7 @@ function handleWebSocketMessage(message: WebSocketMessage) {
 
   // Handle media action notifications
   if (isMediaActionMessage(message)) {
-    mediaActionHandler(message as unknown as { type: string; [key: string]: unknown });
+    mediaActionHandler(message);
     return;
   }
 

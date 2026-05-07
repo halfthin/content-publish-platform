@@ -12,7 +12,7 @@
 import { readFile } from 'node:fs/promises';
 
 export class SelectorConfigLoader {
-  constructor(configPath = '/home/halfthin/dev/content-publish-platform/selector.conf.json') {
+  constructor(configPath = '/home/halfthin/dev/sop/content-publish-platform/selector.conf.json') {
     this.configPath = configPath;
     this.config = null;
     this.loadedAt = null;

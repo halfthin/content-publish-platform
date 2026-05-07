@@ -177,7 +177,7 @@ async function main() {
     // 生成配置文件
     console.log('\n=== 生成配置文件 ===\n');
     
-    const configDir = '/home/halfthin/dev/content-publish-platform';
+    const configDir = '/home/halfthin/dev/sop/content-publish-platform';
     const configFile = path.join(configDir, 'selector.conf.json');
     
     // 简化配置格式
@@ -211,7 +211,7 @@ async function main() {
     console.log(`\n✅ 配置文件已保存到：${configFile}\n`);
     
     // 生成报告
-    const reportDir = '/home/halfthin/dev/content-publish-platform/.workspace/tests';
+    const reportDir = '/home/halfthin/dev/sop/content-publish-platform/.workspace/tests';
     if (!fs.existsSync(reportDir)) {
       fs.mkdirSync(reportDir, { recursive: true });
     }

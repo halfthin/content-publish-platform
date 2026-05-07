@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { cp as fsCp } from 'node:fs/promises';
 import {
   getMediaActionGatewayConfig,
   IMAGE_TO_IMAGE_MODES,
@@ -270,7 +271,7 @@ function buildAssetUrls(assetKey: string) {
 }
 
 function canRetryAction(status: MediaActionStatus): boolean {
-  return status === 'FAILED' || status === 'NEEDS_AUTH';
+  return status === 'FAILED' || status === 'NEEDS_AUTH' || status === 'SUCCESS';
 }
 
 export interface MediaActionsService {
@@ -295,6 +296,7 @@ export function createMediaActionsService(options: {
 }): MediaActionsService {
   const store = options.store || createRedisMediaActionStore();
   const executor = options.executor || createNoopMediaActionExecutor();
+  const shouldClearRedisTimeout = store instanceof RedisMediaActionStore;
 
   return {
     getDefinitions() {
@@ -305,7 +307,7 @@ export function createMediaActionsService(options: {
           ? {
               ...definition,
               dispatchMethod: 'POST' as const,
-              dispatchPathname: gatewayConfig.imageToImageDispatchPath,
+              dispatchPathname: gatewayConfig.dispatchPathByActionType['image-to-image'],
             }
           : definition
       );
@@ -371,7 +373,7 @@ export function createMediaActionsService(options: {
       if (!canRetryAction(current.status)) {
         throw new MediaLibraryError(
           'INVALID_PATH',
-          'Only FAILED or NEEDS_AUTH media actions can be retried',
+          'Only FAILED, NEEDS_AUTH or SUCCESS media actions can be retried',
           400
         );
       }
@@ -447,8 +449,50 @@ export function createMediaActionsService(options: {
       });
 
       // 终态（成功/失败/需要认证）时清除超时 key
-      if (newStatus === 'SUCCESS' || newStatus === 'FAILED' || newStatus === 'NEEDS_AUTH') {
+      if (
+        shouldClearRedisTimeout &&
+        (newStatus === 'SUCCESS' || newStatus === 'FAILED' || newStatus === 'NEEDS_AUTH')
+      ) {
         await clearMediaActionTimeout(jobId);
+      }
+
+      // 自动落盘：平铺主图/平铺细节/SKU颜色图 模式成功时保存到款式目录
+      if (newStatus === 'SUCCESS' && payload.actionType === 'image-to-image') {
+        const cbPayload = payload as MediaActionCallbackPayload;
+        const resultData = cbPayload.result as Record<string, unknown> | undefined;
+        const outputFiles = (resultData?.outputFiles as string[]) || [];
+        if (outputFiles.length > 0) {
+          const action = await store.get(jobId);
+          const productAsset = action?.assets?.[0];
+          const sourcePath = (productAsset as Record<string, unknown>)?.sourcePath as
+            | string
+            | undefined;
+          if (sourcePath) {
+            const taobaoIdx = sourcePath.lastIndexOf('淘宝使用');
+            if (taobaoIdx !== -1) {
+              const baseDir = sourcePath.slice(0, taobaoIdx + 4);
+              const mode = (action?.formData as Record<string, unknown>)?.mode as
+                | string
+                | undefined;
+              let saveDir = baseDir;
+              if (mode === 'sku-color') {
+                saveDir = `${baseDir}/SKU颜色图`;
+              } else if (mode === 'flat_detail') {
+                saveDir = `${baseDir}/详情页用图`;
+              }
+              for (const filePath of outputFiles) {
+                try {
+                  const fileName = filePath.split('/').pop() || `img-${Date.now()}.png`;
+                  const destPath = `${saveDir}/${fileName}`;
+                  await fsCp(filePath, destPath);
+                  console.log(`[AutoSave] Copied ${filePath} → ${destPath}`);
+                } catch (err) {
+                  console.warn(`[AutoSave] Failed to copy ${filePath}:`, err);
+                }
+              }
+            }
+          }
+        }
       }
 
       return result;

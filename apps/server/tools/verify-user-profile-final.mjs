@@ -126,7 +126,7 @@ async function main() {
     console.log('========================================\n');
     
     // 保存结果
-    const resultFile = '/home/halfthin/dev/content-publish-platform/.workspace/tests/user-profile-final-100.json';
+    const resultFile = '/home/halfthin/dev/sop/content-publish-platform/.workspace/tests/user-profile-final-100.json';
     fs.writeFileSync(resultFile, JSON.stringify({
       successRate: `${(successCount/totalCount*100).toFixed(1)}%`,
       successCount,

@@ -134,6 +134,25 @@ export function setupMediaRoutes(options: SetupMediaRoutesOptions = {}) {
       }
     )
     .get(
+      '/folder-tree',
+      async ({ query, set }) => {
+        try {
+          return {
+            success: true,
+            data: await service.getFolderTree(query.rootId || 'regal', query.path || ''),
+          };
+        } catch (error) {
+          return handleMediaError(error, set);
+        }
+      },
+      {
+        query: t.Object({
+          rootId: t.Optional(t.String()),
+          path: t.Optional(t.String()),
+        }),
+      }
+    )
+    .get(
       '/folder-summary',
       async ({ query, set }) => {
         try {
@@ -181,6 +200,49 @@ export function setupMediaRoutes(options: SetupMediaRoutesOptions = {}) {
       }
     )
     .get(
+      '/tags',
+      async ({ query, set }) => {
+        const { rootId, path } = query as { rootId?: string; path?: string };
+        if (!rootId || !path) {
+          set.status = 400;
+          return { success: false, error: 'rootId and path are required' };
+        }
+        const { getTagsForFolder } = await import('../services/media-library.service');
+        const tags = await getTagsForFolder(rootId, path);
+        return { success: true, data: tags };
+      },
+      {
+        query: t.Object({
+          rootId: t.String(),
+          path: t.String(),
+        }),
+      }
+    )
+    .post(
+      '/tags',
+      async ({ body, set }) => {
+        const { rootId, path, tags } = body as {
+          rootId: string;
+          path: string;
+          tags: Record<string, string[]>;
+        };
+        if (!rootId || !path || !tags) {
+          set.status = 400;
+          return { success: false, error: 'rootId, path, and tags are required' };
+        }
+        const { setTagsForFolder } = await import('../services/media-library.service');
+        await setTagsForFolder(rootId, path, tags);
+        return { success: true };
+      },
+      {
+        body: t.Object({
+          rootId: t.String(),
+          path: t.String(),
+          tags: t.Record(t.String(), t.Array(t.String())),
+        }),
+      }
+    )
+    .get(
       '/thumb/:assetKey',
       async ({ params, set }) => {
         try {
@@ -189,12 +251,14 @@ export function setupMediaRoutes(options: SetupMediaRoutesOptions = {}) {
             resolved.absolutePath,
             params.assetKey
           );
-          set.headers['Content-Type'] = mimeType;
-          set.headers['Cache-Control'] = 'public, max-age=300';
+          const headers: Record<string, string> = {
+            'Content-Type': mimeType,
+            'Cache-Control': 'public, max-age=300',
+          };
           if (fromCache) {
-            set.headers['X-Thumb-Cache'] = 'HIT';
+            headers['X-Thumb-Cache'] = 'HIT';
           }
-          return new Response(buffer, { headers: set.headers });
+          return new Response(buffer, { headers });
         } catch (error) {
           return handleMediaError(error, set);
         }
@@ -210,9 +274,12 @@ export function setupMediaRoutes(options: SetupMediaRoutesOptions = {}) {
       async ({ params, set }) => {
         try {
           const file = await service.readAsset(params.assetKey);
-          set.headers['Content-Type'] = file.mimeType;
-          set.headers['Cache-Control'] = 'public, max-age=60';
-          return new Response(file.buffer, { headers: set.headers });
+          return new Response(file.buffer, {
+            headers: {
+              'Content-Type': file.mimeType,
+              'Cache-Control': 'public, max-age=60',
+            },
+          });
         } catch (error) {
           return handleMediaError(error, set);
         }

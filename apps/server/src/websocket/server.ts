@@ -13,10 +13,6 @@ interface WebSocketClient {
 
 const clients = new Set<WebSocketClient>();
 
-function heartbeat(ws: WebSocketClient) {
-  ws.isAlive = true;
-}
-
 export function setupWebSocket() {
   return {
     open(ws: WebSocketClient) {

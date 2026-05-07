@@ -9,7 +9,7 @@ export interface GatewayPublishParams {
   contentId: string;
   accountId: string;
   publishLogId?: string;
-  contentPath: string; // 绝对路径，如 /home/halfthin/dev/content-publish-platform/content/approved/xxx
+  contentPath: string; // 绝对路径，如 /home/halfthin/dev/sop/content-publish-platform/content/approved/xxx
   taskId?: string;
   cookies?: Array<{
     name: string;

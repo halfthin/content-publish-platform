@@ -293,13 +293,16 @@ function previewFile(item: MediaActionUploadItem) {
 }
 
 async function deleteFile(item: MediaActionUploadItem) {
+  if (!currentRoot.value) return;
+  const rootId = currentRoot.value.id;
+
   try {
     await ElMessageBox.confirm(`确定要删除文件 "${item.filename}" 吗？`, '确认删除', {
       confirmButtonText: '删除',
       cancelButtonText: '取消',
       type: 'warning',
     });
-    await deleteMediaActionUploadFile(currentRoot.value!.id, item.relativePath);
+    await deleteMediaActionUploadFile(rootId, item.relativePath);
     items.value = items.value.filter((i) => i.relativePath !== item.relativePath);
     selectedItems.value.delete(item.relativePath);
     ElMessage.success('删除成功');
@@ -317,7 +320,9 @@ async function deletePreviewFile() {
 }
 
 async function deleteSelected() {
-  if (selectedItems.value.size === 0) return;
+  if (!currentRoot.value || selectedItems.value.size === 0) return;
+  const rootId = currentRoot.value.id;
+
   try {
     await ElMessageBox.confirm(
       `确定要删除所选的 ${selectedItems.value.size} 个文件吗？`,
@@ -329,7 +334,7 @@ async function deleteSelected() {
       }
     );
     for (const relativePath of selectedItems.value) {
-      await deleteMediaActionUploadFile(currentRoot.value!.id, relativePath);
+      await deleteMediaActionUploadFile(rootId, relativePath);
     }
     items.value = items.value.filter((i) => !selectedItems.value.has(i.relativePath));
     selectedItems.value.clear();

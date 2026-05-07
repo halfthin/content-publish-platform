@@ -72,8 +72,6 @@ export async function encrypt(data: string, password: string, salt?: string): Pr
       'hex'
     );
 
-    logger.debug('Data encrypted successfully');
-
     return result;
   } catch (error) {
     logger.error('Encryption failed', { error: String(error) });
@@ -115,11 +113,8 @@ export async function decrypt(encryptedData: string, password: string): Promise<
 
     const result = decrypted.toString('utf8');
 
-    logger.debug('Data decrypted successfully');
-
     return result;
   } catch (error) {
-    logger.error('Decryption failed', { error: String(error) });
     throw new Error(`Decryption failed: ${error}`);
   }
 }

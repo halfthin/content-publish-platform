@@ -34,18 +34,57 @@
         <section class="card-panel section-panel sidebar-panel" >
           <div class="section-header">
             <div>
-              <h3>日期目录</h3>
-              <p class="section-helper">按年 / 月 / 日快速进入</p>
+              <h3>目录树</h3>
+              <p class="section-helper">{{ mediaStore.isRegalRoot ? '递归浏览款式目录' : '按年 / 月 / 日快速进入' }}</p>
             </div>
-            <el-tag size="small">{{ mediaStore.rootId }}</el-tag>
+            <el-select
+              v-model="mediaStore.rootId"
+              size="small"
+              style="width: 130px"
+              filterable
+              allow-create
+              default-first-option
+              placeholder="选择或输入ROOT"
+              @change="handleRootChange"
+            >
+              <el-option
+                v-for="root in mediaStore.roots"
+                :key="root.id"
+                :label="root.label"
+                :value="root.id"
+              />
+            </el-select>
           </div>
 
+          <!-- regal root: 文件夹树视图 -->
+          <template v-if="mediaStore.isRegalRoot">
+            <!-- 面包屑导航 -->
+            <div v-if="mediaStore.folderStack.length > 0" class="folder-breadcrumb">
+              <el-button link @click="mediaStore.navigateUp()">
+                <el-icon><ArrowLeft /></el-icon> 返回
+              </el-button>
+            </div>
+            <div class="folder-list">
+              <div
+                v-for="node in mediaStore.folderNodes"
+                :key="node.relativePath"
+                class="folder-node"
+                @click="node.isDirectory && mediaStore.navigateFolder(node.name, node.relativePath)"
+              >
+                <el-icon v-if="node.isDirectory"><FolderOpened /></el-icon>
+                <span>{{ node.name }}</span>
+              </div>
+              <el-empty v-if="mediaStore.folderNodes.length === 0" description="该目录为空" />
+            </div>
+          </template>
+
+          <!-- dapai root: 日期树视图 -->
           <el-tree
-            v-if="dateTreeNodes.length > 0"
+            v-else-if="dateTreeNodes.length > 0"
             :data="dateTreeNodes"
             node-key="key"
             :expand-on-click-node="false"
-            default-expand-all
+            :default-expanded-keys="defaultExpandedKeys"
             @node-click="handleDateNodeClick"
           />
           <el-empty v-else description="暂无日期目录" />
@@ -250,6 +289,7 @@
                     class="media-card media-card-stream"
                     :class="{ selected: selectionStore.isSelected(entry.item.assetKey) }"
                     @click="toggleItemSelection(entry.item)"
+                    @contextmenu.prevent="openContextMenu($event, entry.item)"
                   >
                     <div class="media-thumb-wrap media-thumb-wrap-stream">
                       <SmartMediaImage
@@ -333,6 +373,7 @@
                 class="media-card"
                 :class="{ selected: selectionStore.isSelected(item.assetKey) }"
                 @click="toggleItemSelection(item)"
+                @contextmenu.prevent="openContextMenu($event, item)"
               >
                 <div class="media-thumb-wrap">
                   <SmartMediaImage
@@ -393,6 +434,9 @@
                   </el-dropdown-item>
                   <el-dropdown-item command="image-recognition">
                     图片识别
+                  </el-dropdown-item>
+                  <el-dropdown-item command="__batch-tag__">
+                    批量打标
                   </el-dropdown-item>
                 </el-dropdown-menu>
               </template>
@@ -592,18 +636,52 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 批量打标对话框 -->
+    <el-dialog v-model="batchTagVisible" title="批量打标" width="500px">
+      <div v-for="group in TAG_OPTIONS" :key="group.group" style="margin-bottom:12px">
+        <div style="font-weight:600;margin-bottom:6px">{{ group.group }}</div>
+        <el-checkbox-group v-model="selectedTags">
+          <el-checkbox v-for="opt in group.options" :key="opt.value" :label="opt.value">
+            {{ opt.label }}
+          </el-checkbox>
+        </el-checkbox-group>
+      </div>
+      <div style="margin-top:16px;color:#909399;font-size:12px">
+        当前选中 {{ selectionStore.selectedCount }} 张图
+      </div>
+      <template #footer>
+        <el-button @click="batchTagVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveBatchTags">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 右键菜单 -->
+    <Teleport to="body">
+      <div
+        v-if="contextMenuVisible"
+        class="media-context-menu"
+        :style="{ left: contextMenuX + 'px', top: contextMenuY + 'px' }"
+        @click.stop
+      >
+        <div class="ctx-item" @click="ctxBatchTag">批量打标</div>
+        <div class="ctx-item" @click="ctxPreview">预览</div>
+        <div class="ctx-item" @click="ctxSelect">选择</div>
+        <div class="ctx-item" @click="ctxSendToImageToImage">发送到图生图</div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
 /* biome-ignore-all lint/correctness/noUnusedVariables lint/correctness/noUnusedImports: Vue <script setup> bindings are consumed by the template. */
 
-import { ArrowDown, ArrowRight } from '@element-plus/icons-vue';
+import { ArrowDown, ArrowLeft, ArrowRight, FolderOpened } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import type { MediaActionDefinition, MediaFavoritePath, MediaItem } from '@/api/media';
-import { getMediaFileUrl, getMediaThumbUrl } from '@/api/media';
+import { getMediaFileUrl, getMediaTags, getMediaThumbUrl, setMediaTags } from '@/api/media';
 import SmartMediaImage from '@/components/media/SmartMediaImage.vue';
 import { useMediaLibraryStore } from '@/stores/media-library.store';
 import { type SelectedMediaItem, useMediaSelectionStore } from '@/stores/media-selection.store';
@@ -611,6 +689,7 @@ import { type SelectedMediaItem, useMediaSelectionStore } from '@/stores/media-s
 interface DateTreeNode {
   key: string;
   label: string;
+  expanded?: boolean;
   isDate?: boolean;
   datePath?: string;
   isFolder?: boolean;
@@ -678,6 +757,64 @@ const imageRecognitionForm = reactive({
   promptOverride: '',
   useApiMode: true,
 });
+
+// 批量打标
+const batchTagVisible = ref(false);
+const selectedTags = ref<string[]>([]);
+
+// 右键菜单
+const contextMenuVisible = ref(false);
+const contextMenuX = ref(0);
+const contextMenuY = ref(0);
+const contextMenuItem = ref<SelectedMediaItem | null>(null);
+const TAG_OPTIONS = [
+  {
+    group: '主体/搭配',
+    options: [
+      { label: '主体 (product)', value: 'product' },
+      { label: '搭配 (outfit)', value: 'outfit' },
+    ],
+  },
+  {
+    group: '平铺/SKU颜色',
+    options: [
+      { label: '平铺主图 (flat_main)', value: 'flat_main' },
+      { label: 'SKU颜色 (sku_color)', value: 'sku_color' },
+    ],
+  },
+  { group: '细节', options: [{ label: '细节 (detail)', value: 'detail' }] },
+];
+
+async function handleRootChange(newRootId: string) {
+  const knownRoots = mediaStore.roots.map((r) => r.id);
+  if (!knownRoots.includes(newRootId)) {
+    mediaStore.rootId = `custom:${newRootId}`;
+  }
+  await mediaStore.initialize();
+}
+
+async function openBatchTagDialog() {
+  const selected = selectionStore.selectedItems;
+  if (!selected.length) return;
+  const existing = await getMediaTags(selected[0].rootId, selected[0].parentPath);
+  selectedTags.value = existing[selected[0].filename] || [];
+  batchTagVisible.value = true;
+}
+
+async function saveBatchTags() {
+  const selected = selectionStore.selectedItems;
+  if (!selected.length) return;
+  const { rootId, parentPath } = selected[0];
+  const tags: Record<string, string[]> = {};
+  for (const item of selected) {
+    tags[item.filename] = [...selectedTags.value];
+  }
+  await setMediaTags(rootId, parentPath, tags);
+  await mediaStore.initialize();
+  batchTagVisible.value = false;
+  ElMessage.success('打标已保存');
+}
+
 const thumbPreloadCache = new Set<string>();
 let selectionAutoScrollFrame: number | null = null;
 let selectionPointerDragState: {
@@ -693,12 +830,14 @@ const actionButtonLabelMap: Record<string, string> = {
 };
 
 const dateTreeNodes = computed<DateTreeNode[]>(() => {
-  return mediaStore.dateTree.map((year) => ({
+  return mediaStore.dateTree.map((year, yearIdx) => ({
     key: year.path,
     label: year.label,
-    children: year.months.map((month) => ({
+    expanded: yearIdx === 0,
+    children: year.months.map((month, monthIdx) => ({
       key: month.path,
       label: month.label,
+      expanded: yearIdx === 0 && monthIdx === 0,
       children: month.dates.map((date) => {
         const summary = mediaStore.getFolderSummaryForPath(date.path);
         const folderChildren: DateTreeNode[] =
@@ -719,6 +858,19 @@ const dateTreeNodes = computed<DateTreeNode[]>(() => {
       }),
     })),
   }));
+});
+
+const defaultExpandedKeys = computed<string[]>(() => {
+  const keys: string[] = [];
+  for (const year of mediaStore.dateTree) {
+    keys.push(year.path);
+    const firstMonth = year.months[0];
+    if (firstMonth) {
+      keys.push(firstMonth.path);
+    }
+    break; // 只取第一年
+  }
+  return keys;
 });
 
 const favoriteMap = computed(() => {
@@ -880,10 +1032,21 @@ const workspaceSections = computed(() => {
   const sections: WorkspaceSection[] = [];
   const seenPaths = new Set<string>();
 
+  // 日期目录模式：使用 currentDatePath
   if (mediaStore.currentDatePath) {
     for (const section of buildSectionsForPath(mediaStore.currentDatePath, '当前日期')) {
       sections.push(section);
       seenPaths.add(section.relativePath);
+    }
+  }
+
+  // regal 文件夹模式：使用当前文件夹路径
+  if (mediaStore.isRegalRoot && mediaStore.currentFolderPath) {
+    for (const section of buildSectionsForPath(mediaStore.currentFolderPath, '当前目录')) {
+      if (!seenPaths.has(section.relativePath)) {
+        sections.push(section);
+        seenPaths.add(section.relativePath);
+      }
     }
   }
 
@@ -1028,6 +1191,48 @@ function previewStandalone(item: SelectedMediaItem) {
   previewIndex.value = 0;
   previewSectionTitle.value = item.parentPath.split('/').pop() || item.parentPath;
   previewDialogVisible.value = true;
+}
+
+function openContextMenu(e: MouseEvent, item: SelectedMediaItem) {
+  contextMenuX.value = e.clientX;
+  contextMenuY.value = e.clientY;
+  contextMenuItem.value = item;
+  contextMenuVisible.value = true;
+}
+
+function closeContextMenu() {
+  contextMenuVisible.value = false;
+  contextMenuItem.value = null;
+}
+
+function ctxBatchTag() {
+  if (!contextMenuItem.value) return;
+  selectionStore.clearSelections();
+  selectionStore.toggleSelection(contextMenuItem.value);
+  openBatchTagDialog();
+  closeContextMenu();
+}
+
+function ctxPreview() {
+  if (!contextMenuItem.value) return;
+  previewStandalone(contextMenuItem.value);
+  closeContextMenu();
+}
+
+function ctxSelect() {
+  if (!contextMenuItem.value) return;
+  if (!selectionStore.isSelected(contextMenuItem.value.assetKey)) {
+    selectionStore.toggleSelection(contextMenuItem.value);
+  }
+  closeContextMenu();
+}
+
+function ctxSendToImageToImage() {
+  if (!contextMenuItem.value) return;
+  selectionStore.clearSelections();
+  selectionStore.toggleSelection(contextMenuItem.value);
+  router.push({ name: 'media-image-to-image' });
+  closeContextMenu();
 }
 
 function stopSelectionAutoScroll() {
@@ -1352,7 +1557,7 @@ async function handleDeleteFavorite(favorite: MediaFavoritePath) {
   }
 }
 
-function openActionDialog(actionType: MediaActionDefinition['type']) {
+function openActionDialog(actionType: MediaActionDefinition['type'] | '__batch-tag__') {
   if (actionType === 'image-to-image') {
     void router.push({ name: 'MediaImageToImage' });
     return;
@@ -1363,6 +1568,11 @@ function openActionDialog(actionType: MediaActionDefinition['type']) {
     imageRecognitionForm.promptOverride = '';
     imageRecognitionForm.useApiMode = true;
     imageRecognitionVisible.value = true;
+    return;
+  }
+
+  if (actionType === '__batch-tag__') {
+    void openBatchTagDialog();
     return;
   }
 
@@ -1518,10 +1728,12 @@ watch(
 
 onMounted(() => {
   void mediaStore.initialize();
+  document.addEventListener('click', closeContextMenu);
 });
 
 onBeforeUnmount(() => {
   stopSelectionAutoScroll();
+  document.removeEventListener('click', closeContextMenu);
 });
 </script>
 
@@ -2537,5 +2749,59 @@ onBeforeUnmount(() => {
     flex-direction: row;
     justify-content: flex-end;
   }
+}
+
+.media-context-menu {
+  position: fixed;
+  z-index: 9999;
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: 6px 0;
+  min-width: 140px;
+}
+
+.ctx-item {
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #303133;
+}
+
+.ctx-item:hover {
+  background: #f5f7fa;
+  color: #409eff;
+}
+
+.folder-breadcrumb {
+  padding: 6px 0;
+  margin-bottom: 4px;
+}
+
+.folder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.folder-node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #303133;
+}
+
+.folder-node:hover {
+  background: #f5f7fa;
+  color: #409eff;
+}
+
+.folder-node .el-icon {
+  color: #c0a95c;
 }
 </style>

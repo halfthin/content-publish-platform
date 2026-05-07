@@ -352,12 +352,14 @@ export function setupMediaActionRoutes(options: SetupMediaActionRoutesOptions = 
 
             const fileBuffer = await fs.readFile(matchedFile.absolutePath);
             const detectedType = await fileTypeFromBuffer(fileBuffer);
-            set.headers['Content-Type'] =
-              detectedType?.mime ||
-              matchedFile.mimeType ||
-              getFallbackContentType(matchedFile.relativePath || matchedFile.absolutePath);
-
-            return fileBuffer;
+            return new Response(fileBuffer, {
+              headers: {
+                'Content-Type':
+                  detectedType?.mime ||
+                  matchedFile.mimeType ||
+                  getFallbackContentType(matchedFile.relativePath || matchedFile.absolutePath),
+              },
+            });
           } catch (error) {
             return handleMediaActionError(error, set);
           }

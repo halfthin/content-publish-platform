@@ -4,7 +4,7 @@
 
 set -e
 
-PROJECT_ROOT="/home/halfthin/dev/content-publish-platform"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_ROOT"
 
 echo "📁 开始迁移临时文件到 .workspace 目录..."

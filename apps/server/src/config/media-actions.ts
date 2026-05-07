@@ -34,6 +34,8 @@ export interface MediaActionGatewayConfig {
   fromGatewayToken: string;
   callbackBaseUrl: string;
   routePrefix: string;
+  /** @deprecated Use dispatchPathByActionType['image-to-image'] instead. */
+  imageToImageDispatchPath?: string;
   dispatchPathByActionType: Partial<Record<MediaActionType, string>>;
 }
 
@@ -84,6 +86,9 @@ export const MEDIA_ACTION_DEFINITIONS: MediaActionDefinition[] = [
 ];
 
 export function getMediaActionGatewayConfig(): MediaActionGatewayConfig {
+  const imageToImageDispatchPath =
+    process.env.MEDIA_ACTION_IMAGE_TO_IMAGE_DISPATCH_PATH || '/webhooks/cpp/oc/vd-shoot';
+
   return {
     url: process.env.MEDIA_ACTION_GATEWAY_URL || gatewayConfig.url || '',
     toGatewayToken: process.env.MEDIA_ACTION_TO_GATEWAY_TOKEN || gatewayConfig.toGatewayToken || '',
@@ -91,9 +96,9 @@ export function getMediaActionGatewayConfig(): MediaActionGatewayConfig {
       process.env.MEDIA_ACTION_FROM_GATEWAY_TOKEN || gatewayConfig.fromGatewayToken || '',
     callbackBaseUrl: process.env.API_BASE_URL || 'http://localhost:3000',
     routePrefix: process.env.MEDIA_ACTION_GATEWAY_ROUTE_PREFIX || '/webhooks/cpp/media-actions',
+    imageToImageDispatchPath,
     dispatchPathByActionType: {
-      'image-to-image':
-        process.env.MEDIA_ACTION_IMAGE_TO_IMAGE_DISPATCH_PATH || '/webhooks/cpp/oc/vd-shoot',
+      'image-to-image': imageToImageDispatchPath,
     },
   };
 }

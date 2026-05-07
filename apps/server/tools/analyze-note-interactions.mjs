@@ -38,7 +38,7 @@ async function main() {
     
     // 保存 HTML
     const html = await page.content();
-    fs.writeFileSync('/home/halfthin/dev/content-publish-platform/.workspace/debug/note-detail-interactions.html', html);
+    fs.writeFileSync('/home/halfthin/dev/sop/content-publish-platform/.workspace/debug/note-detail-interactions.html', html);
     console.log('✅ HTML 已保存\n');
     
     // 分析互动区域
@@ -159,7 +159,7 @@ async function main() {
     
     // 保存结果
     fs.writeFileSync(
-      '/home/halfthin/dev/content-publish-platform/.workspace/debug/note-interactions-analysis.json',
+      '/home/halfthin/dev/sop/content-publish-platform/.workspace/debug/note-interactions-analysis.json',
       JSON.stringify(interactions, null, 2)
     );
     console.log('\n✅ 分析结果已保存\n');

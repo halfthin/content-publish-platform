@@ -21,7 +21,7 @@ async function testNoteDetail() {
   
   try {
     // 加载 Cookie
-    const cookiePath = '/home/halfthin/dev/content-publish-platform/.workspace/config/xiaohongshu.cookies.ts';
+    const cookiePath = '/home/halfthin/dev/sop/content-publish-platform/.workspace/config/xiaohongshu.cookies.ts';
     const cookieContent = await readFile(cookiePath, 'utf-8');
     const match = cookieContent.match(/export const XIAOHONGSHU_COOKIES = (\[.*?\]);/s);
     
@@ -200,7 +200,7 @@ async function testNoteDetail() {
         };
         
         const { writeFile } = await import('fs/promises');
-        const outputFile = '/home/halfthin/dev/content-publish-platform/.workspace/tests/note-detail-test-result.json';
+        const outputFile = '/home/halfthin/dev/sop/content-publish-platform/.workspace/tests/note-detail-test-result.json';
         await writeFile(outputFile, JSON.stringify(result, null, 2));
         console.log(`\n💾 结果已保存到：${outputFile}`);
       }

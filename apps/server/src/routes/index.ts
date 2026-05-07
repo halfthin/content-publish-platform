@@ -1,8 +1,6 @@
 import { cors } from '@elysiajs/cors';
 import { Elysia } from 'elysia';
-import { ws } from 'elysia/ws';
 import { createLogger } from '../config/logger';
-import { setupWebSocket } from '../websocket/server';
 import { setupAccountsRoutes } from './accounts';
 import { setupContentsRoutes } from './contents';
 import { setupMediaRoutes } from './media';
@@ -41,11 +39,6 @@ export function setupRoutes() {
         status: 'ok',
         timestamp: new Date().toISOString(),
       }))
-      .use(
-        ws({
-          ...setupWebSocket(),
-        })
-      )
       // 内容管理 API
       .use(setupContentsRoutes())
       // 账号管理 API
