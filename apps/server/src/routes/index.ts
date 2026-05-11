@@ -5,8 +5,10 @@ import { setupAccountsRoutes } from './accounts';
 import { setupContentsRoutes } from './contents';
 import { setupMediaRoutes } from './media';
 import { setupMediaActionRoutes } from './media-actions';
+import { setupPublishRoutes } from './publish';
 import { setupPublishStatusRoutes } from './publish-status';
 import { setupWebhookRoutes } from './webhook';
+import { setupXhsRoutes } from './xhs';
 
 const requestLogger = createLogger('request');
 
@@ -51,6 +53,10 @@ export function setupRoutes() {
       .use(setupMediaRoutes())
       // 素材动作 API
       .use(setupMediaActionRoutes())
+      // 通用发布 API
+      .use(setupPublishRoutes())
+      // 小红书 MCP 直连 API
+      .use(setupXhsRoutes())
       .onRequest(({ path, method }) => {
         // 过滤高频噪音路径
         if (path === '/ws' || path?.startsWith('/ws/')) {
