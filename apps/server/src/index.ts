@@ -67,6 +67,24 @@ async function bootstrap() {
   }
 
   try {
+    // 注册 XHS MCP Publisher
+    const { createXhsMcpPublishers } = await import('./services/xhs-mcp-publisher');
+    const { getChannelRouter } = await import('./services/channel-router');
+    const { validateXhsMcpConfig } = await import('./config/xhs-mcp');
+
+    if (validateXhsMcpConfig()) {
+      const router = getChannelRouter();
+      const publishers = createXhsMcpPublishers();
+      for (const pub of publishers) {
+        router.register(pub);
+      }
+      logger.info({ module: 'xhs-mcp' }, `Registered ${publishers.length} XHS MCP publishers`);
+    }
+  } catch (error) {
+    logger.error({ module: 'xhs-mcp', error }, 'Failed to register XHS MCP publishers');
+  }
+
+  try {
     // 4. 启动素材动作队列 Worker
     startMediaActionWorker();
     logger.info({ module: 'media-action-queue' }, 'Media action workers started');
@@ -133,6 +151,15 @@ const shutdown = async (signal: string) => {
     }
   } catch (error) {
     logger.error({ module: 'media-action-sse-manager', error }, 'Error shutting down SSE manager');
+  }
+
+  // 5.5 关闭 SSE 服务端
+  try {
+    const { getSseServerManager } = await import('./services/sse-server-manager');
+    getSseServerManager().shutdown();
+    logger.info({ module: 'sse-server' }, 'SSE server manager shut down');
+  } catch (error) {
+    logger.error({ module: 'sse-server', error }, 'Error shutting down SSE server manager');
   }
 
   // 6. 关闭浏览器池

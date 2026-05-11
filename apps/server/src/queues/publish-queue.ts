@@ -7,8 +7,10 @@ import { prisma } from '../config/prisma';
 import { DouyinPublisher } from '../publishers/douyin';
 import { WeiboPublisher } from '../publishers/weibo';
 import { XiaohongshuPublisher } from '../publishers/xiaohongshu';
+import { getChannelRouter } from '../services/channel-router';
 import { moveToPublished } from '../services/content.service';
 import { getGatewayService } from '../services/gateway.service';
+import { getProgressEventBus } from '../services/progress-event-bus';
 import { decryptCookies } from '../utils/encryption';
 
 const logger = createLogger('publish-queue');
@@ -206,6 +208,11 @@ export class PublishQueue {
       });
       logger.info('Workers started in local Playwright mode');
     }
+
+    // xhs-mcp worker 始终启动（独立于 Gateway 模式）
+    this.startWorker('xiaohongshu-mcp', async (job) => {
+      return this.processXhsMcpJob(job);
+    });
   }
 
   /**
@@ -784,6 +791,75 @@ export class PublishQueue {
       success: true,
       // 不设置 publishedUrl，实际结果通过回调获取
     };
+  }
+
+  private async processXhsMcpJob(
+    job: Job<PublishJobData, PublishJobResult>
+  ): Promise<PublishJobResult> {
+    const { contentId, accountId } = job.data;
+    const content = job.data.content;
+
+    logger.info('Processing XHS MCP job', { jobId: job.id, contentId, accountId });
+
+    try {
+      const router = getChannelRouter();
+      const publisher = router.resolve({
+        id: job.id || '',
+        platform: 'xiaohongshu',
+        accountId,
+        accountName: accountId, // will be resolved via accountId later
+        action: content.video ? 'publish_video' : 'publish',
+        payload: {
+          title: content.title,
+          content: content.description,
+          images: content.images,
+          video: content.video,
+          tags: content.tags,
+        },
+        createdAt: new Date(),
+      });
+
+      const result = await publisher.publish({
+        id: job.id || '',
+        platform: 'xiaohongshu',
+        accountId,
+        accountName: accountId,
+        action: content.video ? 'publish_video' : 'publish',
+        payload: {
+          title: content.title,
+          content: content.description,
+          images: content.images,
+          video: content.video,
+          tags: content.tags,
+        },
+        createdAt: new Date(),
+      });
+
+      getProgressEventBus().emit({
+        type: 'publish',
+        jobId: job.id || undefined,
+        platform: 'xiaohongshu',
+        status: result.success ? 'SUCCESS' : 'FAILED',
+        progress: result.success ? 100 : 0,
+        data: result,
+      });
+
+      if (result.success) {
+        await this.markPublishSuccess(contentId, accountId, 'xiaohongshu', result.url);
+      } else {
+        await this.markPublishFailure(contentId, accountId, result.error, result.errorCode);
+      }
+
+      return result;
+    } catch (error) {
+      logger.error('XHS MCP job failed', { jobId: job.id, error: String(error) });
+      await this.markPublishFailure(contentId, accountId, String(error), 'MCP_ERROR');
+      return {
+        success: false,
+        error: String(error),
+        errorCode: 'MCP_ERROR',
+      };
+    }
   }
 
   /**
