@@ -1,4 +1,5 @@
 import { createLogger } from '../config/logger';
+import { xhsMcpConfig } from '../config/xhs-mcp';
 import type {
   AuthInitResult,
   AuthStatus,
@@ -51,12 +52,15 @@ class XhsMcpClient {
 
 export class XhsMcpPublisher implements Publisher {
   readonly platform = 'xiaohongshu';
+  private readonly mcpUrl: string;
 
   constructor(
     public readonly name: string,
     private readonly client: XhsMcpClient,
-    private readonly accountNameField: string
-  ) {}
+    mcpUrl: string
+  ) {
+    this.mcpUrl = mcpUrl;
+  }
 
   async publish(job: PublishJobPayload): Promise<PublishResult> {
     const { action, payload } = job;
@@ -138,19 +142,14 @@ export class XhsMcpPublisher implements Publisher {
   validateConfig(): boolean {
     return this.mcpUrl.length > 0;
   }
-
-  private get mcpUrl(): string {
-    return this.client['mcpUrl'] as string;
-  }
 }
 
 /** 从配置创建 XhsMcpPublisher 实例列表 */
 export function createXhsMcpPublishers(): XhsMcpPublisher[] {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { xhsMcpConfig } = require('../config/xhs-mcp');
-  return xhsMcpConfig.instances.map((inst: { name: string; url: string; accountName?: string }) => {
-    const mcpUrl = `${inst.url.replace(/\/+$/, '')}/mcp`;
+  return xhsMcpConfig.instances.map((inst) => {
+    const base = inst.url.replace(/\/+$/, '');
+    const mcpUrl = base.includes('/mcp') ? base : `${base}/mcp`;
     const client = new XhsMcpClient(mcpUrl);
-    return new XhsMcpPublisher(inst.name, client, inst.accountName || inst.name);
+    return new XhsMcpPublisher(inst.name, client, mcpUrl);
   });
 }

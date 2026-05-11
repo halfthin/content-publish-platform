@@ -796,34 +796,33 @@ export class PublishQueue {
   private async processXhsMcpJob(
     job: Job<PublishJobData, PublishJobResult>
   ): Promise<PublishJobResult> {
-    const { contentId, accountId } = job.data;
-    const content = job.data.content;
+    const { contentId, accountId, platform, content } = job.data;
+
+    // 仅处理小红书任务
+    if (platform !== 'xiaohongshu') {
+      return {
+        success: false,
+        error: `Unsupported platform: ${platform}`,
+        errorCode: 'WRONG_PLATFORM',
+      };
+    }
 
     logger.info('Processing XHS MCP job', { jobId: job.id, contentId, accountId });
 
     try {
-      const router = getChannelRouter();
-      const publisher = router.resolve({
-        id: job.id || '',
-        platform: 'xiaohongshu',
-        accountId,
-        accountName: accountId, // will be resolved via accountId later
-        action: content.video ? 'publish_video' : 'publish',
-        payload: {
-          title: content.title,
-          content: content.description,
-          images: content.images,
-          video: content.video,
-          tags: content.tags,
-        },
-        createdAt: new Date(),
+      // 查数据库获取账号名称，用于匹配 MCP 实例
+      const account = await prisma.account.findUnique({
+        where: { id: accountId },
+        select: { name: true },
       });
+      const accountName = account?.name || accountId;
 
-      const result = await publisher.publish({
+      const router = getChannelRouter();
+      const payload: PublishJobPayload = {
         id: job.id || '',
         platform: 'xiaohongshu',
         accountId,
-        accountName: accountId,
+        accountName,
         action: content.video ? 'publish_video' : 'publish',
         payload: {
           title: content.title,
@@ -833,7 +832,10 @@ export class PublishQueue {
           tags: content.tags,
         },
         createdAt: new Date(),
-      });
+      };
+
+      const publisher = router.resolve(payload);
+      const result = await publisher.publish(payload);
 
       getProgressEventBus().emit({
         type: 'publish',

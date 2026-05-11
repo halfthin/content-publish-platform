@@ -59,15 +59,7 @@ async function bootstrap() {
   }
 
   try {
-    // 3. 启动发布队列 Worker
-    startAllWorkers();
-    logger.info({ module: 'publish-queue' }, 'Publish queue workers started');
-  } catch (error) {
-    logger.error({ module: 'publish-queue', error }, 'Failed to start workers');
-  }
-
-  try {
-    // 注册 XHS MCP Publisher
+    // 注册 XHS MCP Publisher（需在 workers 启动之前完成）
     const { createXhsMcpPublishers } = await import('./services/xhs-mcp-publisher');
     const { getChannelRouter } = await import('./services/channel-router');
     const { validateXhsMcpConfig } = await import('./config/xhs-mcp');
@@ -82,6 +74,14 @@ async function bootstrap() {
     }
   } catch (error) {
     logger.error({ module: 'xhs-mcp', error }, 'Failed to register XHS MCP publishers');
+  }
+
+  try {
+    // 3. 启动发布队列 Worker
+    startAllWorkers();
+    logger.info({ module: 'publish-queue' }, 'Publish queue workers started');
+  } catch (error) {
+    logger.error({ module: 'publish-queue', error }, 'Failed to start workers');
   }
 
   try {
