@@ -5,6 +5,7 @@ const logger = createLogger('xhs-mcp');
 export interface XhsMcpInstanceConfig {
   name: string;
   url: string;
+  accountName?: string;
 }
 
 interface XhsMcpConfig {
