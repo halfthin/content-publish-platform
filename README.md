@@ -716,13 +716,19 @@ cd apps/server && bun test
 
 ## 📝 API 文档
 
-后端 API 运行在 `http://localhost:3000`
+后端 API 默认运行在 `http://localhost:50000`（以 `PORT` 环境变量为准）。完整接口清单、请求/响应示例、Webhook、SSE 与 WebSocket 说明见：
+
+- [docs/API.md](docs/API.md)
+
+常用入口：
 
 - `GET /` - API 信息
 - `GET /health` - 健康检查
 - `GET /api/contents` - 内容列表
 - `GET /api/accounts` - 账号列表
-- `POST /api/publish` - 发布内容
+- `POST /api/publish` - 通用发布入口
+- `GET /api/publish/progress` - 发布进度 SSE
+- `GET /api/xhs/login/status` - 小红书 MCP 登录状态
 
 ## 📄 License
 
