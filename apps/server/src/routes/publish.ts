@@ -1,11 +1,27 @@
 import { Elysia } from 'elysia';
-import { createLogger } from '../config/logger';
+import type { PublishJobData } from '../queues/publish-queue';
 import { getProgressEventBus } from '../services/progress-event-bus';
 import { getSseServerManager } from '../services/sse-server-manager';
 
-const logger = createLogger('routes:publish');
+export interface PublishRouteQueue {
+  addJob(jobData: PublishJobData): Promise<{ id?: string }>;
+  getJobState(jobId: string): Promise<string | undefined>;
+}
 
-export function setupPublishRoutes() {
+interface SetupPublishRoutesOptions {
+  getQueue?: () => Promise<PublishRouteQueue> | PublishRouteQueue;
+}
+
+async function resolveQueue(options: SetupPublishRoutesOptions): Promise<PublishRouteQueue> {
+  if (options.getQueue) {
+    return options.getQueue();
+  }
+
+  const { getPublishQueue } = await import('../queues/publish-queue');
+  return getPublishQueue();
+}
+
+export function setupPublishRoutes(options: SetupPublishRoutesOptions = {}) {
   return (
     new Elysia({ prefix: '/api/publish' })
 
@@ -20,10 +36,12 @@ export function setupPublishRoutes() {
           return error(400, { success: false, error: 'platform, accountId, action required' });
         }
 
-        const { getPublishQueue } = await import('../queues/publish-queue');
-        const job = await getPublishQueue().addJob({
+        const queue = await resolveQueue(options);
+        const job = await queue.addJob({
           contentId: accountId as string,
           accountId: accountId as string,
+          accountName: typeof accountName === 'string' ? accountName : undefined,
+          action: action as string,
           platform: platform as 'xiaohongshu' | 'weibo' | 'douyin' | 'bilibili' | 'wechat',
           content: payload as Record<string, unknown> as {
             title: string;
@@ -32,6 +50,10 @@ export function setupPublishRoutes() {
             video?: string;
             tags?: string[];
             basePath?: string;
+            scheduleAt?: string;
+            visibility?: string;
+            isOriginal?: boolean;
+            products?: unknown;
           },
         });
 
@@ -50,7 +72,7 @@ export function setupPublishRoutes() {
       .get('/progress', ({ request, set }) => {
         set.headers['Content-Type'] = 'text/event-stream';
         set.headers['Cache-Control'] = 'no-cache';
-        set.headers['Connection'] = 'keep-alive';
+        set.headers.Connection = 'keep-alive';
         set.headers['X-Accel-Buffering'] = 'no';
 
         return getSseServerManager().createStream(request);
@@ -58,8 +80,8 @@ export function setupPublishRoutes() {
 
       // 查询任务状态
       .get('/:jobId', async ({ params, error }) => {
-        const { getPublishQueue } = await import('../queues/publish-queue');
-        const state = await getPublishQueue().getJobState(params.jobId);
+        const queue = await resolveQueue(options);
+        const state = await queue.getJobState(params.jobId);
         if (!state) {
           return error(404, { success: false, error: 'Job not found' });
         }

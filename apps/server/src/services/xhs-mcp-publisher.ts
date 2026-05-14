@@ -1,4 +1,3 @@
-import { createLogger } from '../config/logger';
 import { xhsMcpConfig } from '../config/xhs-mcp';
 import type {
   AuthInitResult,
@@ -7,8 +6,6 @@ import type {
   PublishJobPayload,
   PublishResult,
 } from '../types/publisher';
-
-const logger = createLogger('xhs-mcp');
 
 class JsonRpcError extends Error {
   constructor(

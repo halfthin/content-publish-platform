@@ -1,8 +1,8 @@
 /** 发布结果 */
 export interface PublishResult {
   success: boolean;
-  externalId?: string;  // 平台返回的 ID（如笔记 ID）
-  url?: string;         // 发布后的链接
+  externalId?: string; // 平台返回的 ID（如笔记 ID）
+  url?: string; // 发布后的链接
   error?: string;
   errorCode?: string;
   raw?: unknown;
@@ -18,8 +18,8 @@ export interface AuthStatus {
 /** 认证初始化结果 */
 export interface AuthInitResult {
   type: 'qrcode' | 'url' | 'none';
-  data?: string;       // Base64 或跳转链接
-  expiresIn?: number;  // 过期秒数
+  data?: string; // Base64 或跳转链接
+  expiresIn?: number; // 过期秒数
 }
 
 /**

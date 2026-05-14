@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach } from 'bun:test';
+import { beforeEach, describe, expect, it } from 'bun:test';
+import type { AuthStatus, Publisher, PublishJobPayload, PublishResult } from '../types/publisher';
 import { ChannelRouter } from './channel-router';
-import type { Publisher, PublishResult, AuthStatus, PublishJobPayload } from '../types/publisher';
 
 function createMockPublisher(platform: string, name: string): Publisher {
   return {
@@ -29,8 +29,13 @@ describe('ChannelRouter', () => {
     const pub = createMockPublisher('xiaohongshu', 'xhs-1');
     router.register(pub);
     const resolved = router.resolve({
-      id: '1', platform: 'xiaohongshu', accountName: 'xhs-1',
-      accountId: 'a1', action: 'publish', payload: {}, createdAt: new Date(),
+      id: '1',
+      platform: 'xiaohongshu',
+      accountName: 'xhs-1',
+      accountId: 'a1',
+      action: 'publish',
+      payload: {},
+      createdAt: new Date(),
     });
     expect(resolved.name).toBe('xhs-1');
   });
@@ -39,8 +44,13 @@ describe('ChannelRouter', () => {
     const def = createMockPublisher('xiaohongshu', 'default');
     router.register(def);
     const resolved = router.resolve({
-      id: '2', platform: 'xiaohongshu', accountName: 'unknown',
-      accountId: 'a2', action: 'publish', payload: {}, createdAt: new Date(),
+      id: '2',
+      platform: 'xiaohongshu',
+      accountName: 'unknown',
+      accountId: 'a2',
+      action: 'publish',
+      payload: {},
+      createdAt: new Date(),
     });
     expect(resolved.name).toBe('default');
   });
@@ -48,8 +58,13 @@ describe('ChannelRouter', () => {
   it('throws when no publisher found', () => {
     expect(() => {
       router.resolve({
-        id: '3', platform: 'wechat', accountName: 'default',
-        accountId: 'a3', action: 'publish', payload: {}, createdAt: new Date(),
+        id: '3',
+        platform: 'wechat',
+        accountName: 'default',
+        accountId: 'a3',
+        action: 'publish',
+        payload: {},
+        createdAt: new Date(),
       });
     }).toThrow('No publisher found for wechat:default');
   });
@@ -58,8 +73,13 @@ describe('ChannelRouter', () => {
     const pub = createMockPublisher('xiaohongshu', 'xhs-1');
     router.register(pub);
     const result = await router.publish({
-      id: '4', platform: 'xiaohongshu', accountName: 'xhs-1',
-      accountId: 'a4', action: 'publish', payload: {}, createdAt: new Date(),
+      id: '4',
+      platform: 'xiaohongshu',
+      accountName: 'xhs-1',
+      accountId: 'a4',
+      action: 'publish',
+      payload: {},
+      createdAt: new Date(),
     });
     expect(result.success).toBe(true);
     expect(result.externalId).toBe('xhs-1-result');

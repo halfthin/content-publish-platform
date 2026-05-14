@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'bun:test';
-import type { PublishResult, PublishJobPayload } from './publisher';
+import { describe, expect, it } from 'bun:test';
+import type { PublishJobPayload, PublishResult } from './publisher';
 
 describe('Publisher types', () => {
   it('PublishResult can be success', () => {

@@ -20,6 +20,8 @@ export interface PublishJobData {
   accountId: string;
   publishLogId?: string;
   platform: 'xiaohongshu' | 'weibo' | 'douyin' | 'bilibili' | 'wechat';
+  accountName?: string;
+  action?: string;
   content: {
     title: string;
     description?: string;
@@ -27,10 +29,44 @@ export interface PublishJobData {
     video?: string;
     tags?: string[];
     basePath?: string; // 添加: 内容目录绝对路径 (APPROVED 目录)
+    scheduleAt?: string;
+    visibility?: string;
+    isOriginal?: boolean;
+    products?: unknown;
   };
   scheduledAt?: number;
   retryCount?: number;
   taskId?: string; // 添加: Gateway 任务ID
+}
+
+export function toXhsMcpPublishPayload(params: {
+  jobId?: string;
+  accountId: string;
+  accountName: string;
+  action?: string;
+  content: PublishJobData['content'];
+}): PublishJobPayload {
+  const { jobId, accountId, accountName, action, content } = params;
+
+  return {
+    id: jobId || '',
+    platform: 'xiaohongshu',
+    accountId,
+    accountName,
+    action: action || (content.video ? 'publish_video' : 'publish'),
+    payload: {
+      title: content.title,
+      content: content.description,
+      images: content.images,
+      video: content.video,
+      tags: content.tags,
+      scheduleAt: content.scheduleAt,
+      visibility: content.visibility,
+      isOriginal: content.isOriginal,
+      products: content.products,
+    },
+    createdAt: new Date(),
+  };
 }
 
 export interface PublishJobResult {
@@ -815,24 +851,16 @@ export class PublishQueue {
         where: { id: accountId },
         select: { name: true },
       });
-      const accountName = account?.name || accountId;
+      const accountName = job.data.accountName || account?.name || accountId;
 
       const router = getChannelRouter();
-      const payload: PublishJobPayload = {
-        id: job.id || '',
-        platform: 'xiaohongshu',
+      const payload = toXhsMcpPublishPayload({
+        jobId: job.id,
         accountId,
         accountName,
-        action: content.video ? 'publish_video' : 'publish',
-        payload: {
-          title: content.title,
-          content: content.description,
-          images: content.images,
-          video: content.video,
-          tags: content.tags,
-        },
-        createdAt: new Date(),
-      };
+        action: job.data.action,
+        content,
+      });
 
       const publisher = router.resolve(payload);
       const result = await publisher.publish(payload);

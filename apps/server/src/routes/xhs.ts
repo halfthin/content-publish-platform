@@ -1,11 +1,26 @@
 import { Elysia } from 'elysia';
-import { createLogger } from '../config/logger';
+import type { PublishJobData } from '../queues/publish-queue';
 import { getChannelRouter } from '../services/channel-router';
 import { getProgressEventBus } from '../services/progress-event-bus';
 
-const logger = createLogger('routes:xhs');
+export interface XhsRouteQueue {
+  addJob(jobData: PublishJobData): Promise<{ id?: string }>;
+}
 
-export function setupXhsRoutes() {
+interface SetupXhsRoutesOptions {
+  getQueue?: () => Promise<XhsRouteQueue> | XhsRouteQueue;
+}
+
+async function resolveQueue(options: SetupXhsRoutesOptions): Promise<XhsRouteQueue> {
+  if (options.getQueue) {
+    return options.getQueue();
+  }
+
+  const { getPublishQueue } = await import('../queues/publish-queue');
+  return getPublishQueue();
+}
+
+export function setupXhsRoutes(options: SetupXhsRoutesOptions = {}) {
   return new Elysia({ prefix: '/api/xhs' })
 
     .get('/login/qrcode', async ({ query, error }) => {
@@ -78,16 +93,22 @@ export function setupXhsRoutes() {
         return error(400, { success: false, error: 'accountId, title, content required' });
       }
 
-      const { getPublishQueue } = await import('../queues/publish-queue');
-      const job = await getPublishQueue().addJob({
+      const queue = await resolveQueue(options);
+      const job = await queue.addJob({
         contentId: accountId as string,
         accountId: accountId as string,
+        accountName: typeof accountName === 'string' ? accountName : undefined,
+        action: 'publish',
         platform: 'xiaohongshu',
         content: {
           title: title as string,
           description: content as string,
           images: images as string[] | undefined,
           tags: tags as string[] | undefined,
+          scheduleAt: scheduleAt as string | undefined,
+          visibility: visibility as string | undefined,
+          isOriginal: isOriginal as boolean | undefined,
+          products,
         },
       });
 
@@ -95,25 +116,27 @@ export function setupXhsRoutes() {
     })
 
     .post('/publish/video', async ({ body, error }) => {
-      const { accountId, title, content, video, tags, visibility } = body as Record<
-        string,
-        unknown
-      >;
+      const { accountId, accountName, title, content, video, tags, visibility, products } =
+        body as Record<string, unknown>;
 
       if (!accountId || !title || !content || !video) {
         return error(400, { success: false, error: 'accountId, title, content, video required' });
       }
 
-      const { getPublishQueue } = await import('../queues/publish-queue');
-      const job = await getPublishQueue().addJob({
+      const queue = await resolveQueue(options);
+      const job = await queue.addJob({
         contentId: accountId as string,
         accountId: accountId as string,
+        accountName: typeof accountName === 'string' ? accountName : undefined,
+        action: 'publish_video',
         platform: 'xiaohongshu',
         content: {
           title: title as string,
           description: content as string,
           video: video as string,
           tags: tags as string[] | undefined,
+          visibility: visibility as string | undefined,
+          products,
         },
       });
 
