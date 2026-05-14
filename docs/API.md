@@ -468,7 +468,7 @@ Base：`/api/xhs`
 
 ### GET `/api/xhs/login/qrcode?instance=xhs-1`
 
-调用 MCP `get_login_qrcode` 获取登录二维码，并向进度总线发送 `auth/qr_ready` 事件。
+调用 MCP `get_login_qrcode` 获取登录二维码，并向进度总线发送 `auth/qr_ready` 事件。若 `instance` 未注册，返回 `404` 与 `MCP instance not found`。
 
 **响应**
 
@@ -485,7 +485,7 @@ Base：`/api/xhs`
 
 ### GET `/api/xhs/login/status?instance=xhs-1`
 
-调用 MCP `check_login_status` 查询登录状态。
+调用 MCP `check_login_status` 查询登录状态。若 `instance` 未注册，返回 `404` 与 `MCP instance not found`。
 
 **响应**
 
@@ -502,11 +502,11 @@ Base：`/api/xhs`
 
 ### POST `/api/xhs/login/refresh?instance=xhs-1`
 
-调用 MCP `delete_cookies` 后重新获取登录二维码。
+调用 MCP `delete_cookies` 后重新获取登录二维码。若 `instance` 未注册，返回 `404` 与 `MCP instance not found`。
 
 ### POST `/api/xhs/publish`
 
-小红书图文发布快捷入口。当前实现会把任务加入通用发布队列。
+小红书图文发布快捷入口。当前实现会把任务加入通用发布队列。缺少 `accountId`、`title` 或 `content` 时返回 `400`。
 
 **Body**
 
@@ -529,18 +529,20 @@ Base：`/api/xhs`
 
 ### POST `/api/xhs/publish/video`
 
-小红书视频发布快捷入口。
+小红书视频发布快捷入口。当前实现会把任务加入通用发布队列。缺少 `accountId`、`title`、`content` 或 `video` 时返回 `400`。
 
 **Body**
 
 ```json
 {
   "accountId": "account-id",
+  "accountName": "xhs-1",
   "title": "标题",
   "content": "正文",
   "video": "/container/path/video.mp4",
   "tags": ["tag1"],
-  "visibility": "optional"
+  "visibility": "optional",
+  "products": []
 }
 ```
 
@@ -877,4 +879,33 @@ curl 'http://localhost:50000/api/xhs/login/status?instance=xhs-1'
 - `/api/publish` 与 `/api/xhs/publish*` 当前会入队到现有 BullMQ 发布队列；完整发布依赖 Redis、Postgres、有效账号、有效 Cookie 或 xhs-mcp 登录态。
 - `PublishJobData` 与新 `PublishJobPayload` 暂时并存，后续需要统一类型边界。
 - `XHS_MCP_INSTANCES.accountName` 已在配置类型中支持，但当前 publisher 实例注册 key 仍主要使用 `name`。
+- `GET /api/xhs/login/*` 与 `POST /api/xhs/login/refresh` 需要先配置并启动 `XHS_MCP_INSTANCES` 对应实例；未配置时应返回 `404`，不应触发真实外部请求。
 - 真实外部发布会对第三方平台产生副作用，合并前建议只做测试账号/草稿内容验证。
+
+## 14. 当前验证状态（2026-05-14）
+
+已完成：
+
+- `cd apps/server && bun run check`：通过（Biome 检查并格式化）。
+- `cd apps/server && bun test`：通过，包含发布路由、XHS 路由和队列映射回归测试。
+- `bun run build`：通过（Vite 仅有 chunk-size warning）。
+- 本地非破坏性 smoke：`/health`、`/api/accounts`、`/api/contents`、`/api/publish-status/stats` 均返回 `200`。
+
+真实 XHS MCP / Gateway smoke 当前阻塞：
+
+- `apps/server/.env` 中 `XHS_MCP_INSTANCES` 未配置。
+- 探测端口显示 `OPENCLAW_GATEWAY_URL=http://localhost:18789` 未监听，常见 XHS MCP 端口 `18060`、`5601` 未监听。
+- 因此当前只验证到本地 API、队列入参映射和缺实例错误路径；未执行会产生第三方平台副作用的真实发布。
+
+解除阻塞后建议使用测试账号配置：
+
+```bash
+XHS_MCP_INSTANCES='[{"name":"xhs-1","url":"http://<mcp-host>:<port>","accountName":"<test-account>"}]'
+```
+
+然后依次验证：
+
+1. `GET /api/xhs/login/status?instance=xhs-1`
+2. `GET /api/xhs/login/qrcode?instance=xhs-1`
+3. `GET /api/publish/progress` SSE 连接事件
+4. 仅使用测试账号/安全素材验证 enqueue；真实发布需单独授权。

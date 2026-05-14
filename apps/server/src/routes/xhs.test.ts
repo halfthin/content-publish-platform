@@ -18,6 +18,78 @@ describe('xhs routes', () => {
     );
   }
 
+  it('GET /api/xhs/login/qrcode returns not-found payload when MCP instance is not registered', async () => {
+    const app = createApp();
+
+    const res = await app.handle(
+      new Request('http://localhost/api/xhs/login/qrcode?instance=missing-xhs')
+    );
+    const data = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(data).toEqual({ success: false, error: 'MCP instance not found' });
+  });
+
+  it('GET /api/xhs/login/status returns not-found payload when MCP instance is not registered', async () => {
+    const app = createApp();
+
+    const res = await app.handle(
+      new Request('http://localhost/api/xhs/login/status?instance=missing-xhs')
+    );
+    const data = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(data).toEqual({ success: false, error: 'MCP instance not found' });
+  });
+
+  it('POST /api/xhs/login/refresh returns not-found payload when MCP instance is not registered', async () => {
+    const app = createApp();
+
+    const res = await app.handle(
+      new Request('http://localhost/api/xhs/login/refresh?instance=missing-xhs', {
+        method: 'POST',
+      })
+    );
+    const data = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(data).toEqual({ success: false, error: 'MCP instance not found' });
+  });
+
+  it('POST /api/xhs/publish returns bad-request payload when required fields are missing', async () => {
+    const app = createApp();
+
+    const res = await app.handle(
+      new Request('http://localhost/api/xhs/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId: 'account-1', title: '标题' }),
+      })
+    );
+    const data = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(data).toEqual({ success: false, error: 'accountId, title, content required' });
+    expect(addJobMock).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/xhs/publish/video returns bad-request payload when required fields are missing', async () => {
+    const app = createApp();
+
+    const res = await app.handle(
+      new Request('http://localhost/api/xhs/publish/video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId: 'account-1', title: '标题', content: '正文' }),
+      })
+    );
+    const data = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(data).toEqual({ success: false, error: 'accountId, title, content, video required' });
+    expect(addJobMock).not.toHaveBeenCalled();
+  });
+
   it('POST /api/xhs/publish forwards optional MCP publishing fields to the queue', async () => {
     const app = createApp();
 

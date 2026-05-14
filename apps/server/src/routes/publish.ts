@@ -26,14 +26,15 @@ export function setupPublishRoutes(options: SetupPublishRoutesOptions = {}) {
     new Elysia({ prefix: '/api/publish' })
 
       // 通用发布入口
-      .post('/', async ({ body, error }) => {
+      .post('/', async ({ body, set }) => {
         const { platform, accountId, accountName, action, payload } = body as Record<
           string,
           unknown
         >;
 
         if (!platform || !accountId || !action) {
-          return error(400, { success: false, error: 'platform, accountId, action required' });
+          set.status = 400;
+          return { success: false, error: 'platform, accountId, action required' };
         }
 
         const queue = await resolveQueue(options);
@@ -79,11 +80,12 @@ export function setupPublishRoutes(options: SetupPublishRoutesOptions = {}) {
       })
 
       // 查询任务状态
-      .get('/:jobId', async ({ params, error }) => {
+      .get('/:jobId', async ({ params, set }) => {
         const queue = await resolveQueue(options);
         const state = await queue.getJobState(params.jobId);
         if (!state) {
-          return error(404, { success: false, error: 'Job not found' });
+          set.status = 404;
+          return { success: false, error: 'Job not found' };
         }
         return { success: true, data: { jobId: params.jobId, state } };
       })

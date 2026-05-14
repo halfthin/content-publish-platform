@@ -23,12 +23,13 @@ async function resolveQueue(options: SetupXhsRoutesOptions): Promise<XhsRouteQue
 export function setupXhsRoutes(options: SetupXhsRoutesOptions = {}) {
   return new Elysia({ prefix: '/api/xhs' })
 
-    .get('/login/qrcode', async ({ query, error }) => {
+    .get('/login/qrcode', async ({ query, set }) => {
       const instanceName = (query as { instance?: string }).instance || 'xhs-1';
       const router = getChannelRouter();
       const publisher = router.get(`xiaohongshu:${instanceName}`);
       if (!publisher || !publisher.startAuth) {
-        return error(404, { success: false, error: 'MCP instance not found' });
+        set.status = 404;
+        return { success: false, error: 'MCP instance not found' };
       }
 
       const result = await publisher.startAuth();
@@ -42,12 +43,13 @@ export function setupXhsRoutes(options: SetupXhsRoutesOptions = {}) {
       return { success: true, data: result };
     })
 
-    .get('/login/status', async ({ query, error }) => {
+    .get('/login/status', async ({ query, set }) => {
       const instanceName = (query as { instance?: string }).instance || 'xhs-1';
       const router = getChannelRouter();
       const publisher = router.get(`xiaohongshu:${instanceName}`);
       if (!publisher) {
-        return error(404, { success: false, error: 'MCP instance not found' });
+        set.status = 404;
+        return { success: false, error: 'MCP instance not found' };
       }
 
       const status = await publisher.checkAuth();
@@ -63,19 +65,20 @@ export function setupXhsRoutes(options: SetupXhsRoutesOptions = {}) {
       return { success: true, data: status };
     })
 
-    .post('/login/refresh', async ({ query, error }) => {
+    .post('/login/refresh', async ({ query, set }) => {
       const instanceName = (query as { instance?: string }).instance || 'xhs-1';
       const router = getChannelRouter();
       const publisher = router.get(`xiaohongshu:${instanceName}`);
       if (!publisher || !publisher.refreshAuth) {
-        return error(404, { success: false, error: 'MCP instance not found' });
+        set.status = 404;
+        return { success: false, error: 'MCP instance not found' };
       }
 
       const result = await publisher.refreshAuth();
       return { success: true, data: result };
     })
 
-    .post('/publish', async ({ body, error }) => {
+    .post('/publish', async ({ body, set }) => {
       const {
         accountId,
         accountName,
@@ -90,7 +93,8 @@ export function setupXhsRoutes(options: SetupXhsRoutesOptions = {}) {
       } = body as Record<string, unknown>;
 
       if (!accountId || !title || !content) {
-        return error(400, { success: false, error: 'accountId, title, content required' });
+        set.status = 400;
+        return { success: false, error: 'accountId, title, content required' };
       }
 
       const queue = await resolveQueue(options);
@@ -115,12 +119,13 @@ export function setupXhsRoutes(options: SetupXhsRoutesOptions = {}) {
       return { success: true, data: { jobId: job.id, status: 'QUEUED' } };
     })
 
-    .post('/publish/video', async ({ body, error }) => {
+    .post('/publish/video', async ({ body, set }) => {
       const { accountId, accountName, title, content, video, tags, visibility, products } =
         body as Record<string, unknown>;
 
       if (!accountId || !title || !content || !video) {
-        return error(400, { success: false, error: 'accountId, title, content, video required' });
+        set.status = 400;
+        return { success: false, error: 'accountId, title, content, video required' };
       }
 
       const queue = await resolveQueue(options);

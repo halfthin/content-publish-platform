@@ -62,4 +62,42 @@ describe('generic publish routes', () => {
       products: [{ id: 'sku-1' }],
     });
   });
+
+  it('POST /api/publish returns bad-request payload when routing fields are missing', async () => {
+    const app = new Elysia().use(
+      setupPublishRoutes({
+        getQueue: () => ({ addJob: addJobMock, getJobState: getJobStateMock }),
+      })
+    );
+
+    const res = await app.handle(
+      new Request('http://localhost/api/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform: 'xiaohongshu', accountId: 'account-1' }),
+      })
+    );
+    const data = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(data).toEqual({ success: false, error: 'platform, accountId, action required' });
+    expect(addJobMock).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/publish/:jobId returns not-found payload when queue has no job', async () => {
+    const app = new Elysia().use(
+      setupPublishRoutes({
+        getQueue: () => ({
+          addJob: addJobMock,
+          getJobState: mock(async () => undefined),
+        }),
+      })
+    );
+
+    const res = await app.handle(new Request('http://localhost/api/publish/missing-job'));
+    const data = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(data).toEqual({ success: false, error: 'Job not found' });
+  });
 });
