@@ -12,13 +12,6 @@
 - **任务队列**: BullMQ + Redis
 - **浏览器自动化**: Playwright
 
-### 前端
-- **框架**: Vue 3
-- **UI 组件**: Element Plus
-- **构建工具**: Vite
-- **状态管理**: Pinia
-- **路由**: Vue Router
-
 ## 📦 快速开始
 
 ### 1. 环境准备
@@ -44,8 +37,8 @@ docker-compose -f docker/docker-compose.yml down
 ```
 
 访问：
-- 前端：http://localhost:8080
-- 后端 API: http://localhost:3000
+- API Service: http://localhost:50000
+- Swagger UI: http://localhost:50000/api-doc
 
 ### 3. 本地开发
 
@@ -59,7 +52,7 @@ bun run db:generate
 # 数据库迁移
 bun run db:migrate
 
-# 启动开发服务器
+# 启动 API Service（仅 apps/server，不启动前端）
 bun run dev
 ```
 
@@ -72,9 +65,9 @@ cd apps/server && bun test
 # 仅在本地基础设施已就绪时运行集成测试
 cd apps/server && RUN_INTEGRATION_TESTS=true bun test
 
-# 定向执行 Biome 检查
-cd apps/server && ./node_modules/.bin/biome check src test
-cd apps/web && ./node_modules/.bin/biome check src
+# 定向执行质量检查
+bun run check
+bun run build
 ```
 
 说明：
@@ -337,8 +330,7 @@ Hex 解码
 ```
 content-publish-platform/
 ├── apps/
-│   ├── server/          # 后端服务
-│   └── web/             # 前端应用
+│   └── server/          # API Service
 ├── content/             # 内容文件存储
 │   ├── inbox/          # 待审核
 │   ├── approved/       # 已通过
@@ -351,11 +343,11 @@ content-publish-platform/
 ## 🔧 开发命令
 
 ```bash
-# 后端开发
-bun --cwd apps/server run dev
+# API Service 开发（根目录脚本只启动 apps/server）
+bun run dev
 
-# 前端开发
-bun --cwd apps/web run dev
+# API Service 单次启动
+bun run start
 
 # 数据库操作
 bun --cwd apps/server run db:generate
