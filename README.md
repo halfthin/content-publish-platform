@@ -38,7 +38,7 @@ docker-compose -f docker/docker-compose.yml down
 
 访问：
 - API Service: http://localhost:50000
-- Swagger UI: http://localhost:50000/api-doc
+- Swagger UI: http://localhost:50000/docs
 
 ### 3. 本地开发
 

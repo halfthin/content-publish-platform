@@ -3,7 +3,7 @@
 > 更新时间：2026-05-15  
 > 范围：`apps/server/src/routes/*`、`apps/server/src/index.ts` 当前后端路由。  
 > 默认 Base URL：`http://localhost:50000`（以 `PORT` 环境变量为准；部分历史文档仍可能写 `3000`）。  
-> Swagger UI：`/api-doc`；OpenAPI JSON：`/api-doc/openapi.json`。
+> Swagger UI：`/docs`；OpenAPI JSON：`/docs/openapi.json`。
 
 ## 1. 通用约定
 
@@ -11,8 +11,8 @@
 
 当前后端提供两种 API 文档入口：
 
-- `GET /api-doc`：Swagger UI 页面。
-- `GET /api-doc/openapi.json`：OpenAPI 3.0 JSON。
+- `GET /docs`：Swagger UI 页面。
+- `GET /docs/openapi.json`：OpenAPI 3.0 JSON。
 
 `docs/API.md` 是叙述版文档；OpenAPI JSON 是 Swagger UI 使用的机器可读契约。测试 `apps/server/src/routes/api-doc.test.ts` 会校验叙述版文档列出的 HTTP/WS 端点都存在于 OpenAPI paths 中。
 

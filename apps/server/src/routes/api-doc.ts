@@ -837,7 +837,7 @@ const swaggerHtml = `<!doctype html>
   <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
   <script>
     window.ui = SwaggerUIBundle({
-      url: '/api-doc/openapi.json',
+      url: '/docs/openapi.json',
       dom_id: '#swagger-ui',
       deepLinking: true,
       presets: [SwaggerUIBundle.presets.apis],
@@ -848,11 +848,11 @@ const swaggerHtml = `<!doctype html>
 
 export function setupApiDocRoutes() {
   return new Elysia()
-    .get('/api-doc/openapi.json', ({ set }) => {
+    .get('/docs/openapi.json', ({ set }) => {
       set.headers['Cache-Control'] = 'no-store';
       return openApiDocument;
     })
-    .get('/api-doc', ({ set }) => {
+    .get('/docs', ({ set }) => {
       set.headers['Content-Type'] = 'text/html; charset=utf-8';
       return new Response(swaggerHtml, {
         headers: {

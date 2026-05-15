@@ -18,7 +18,7 @@ describe('api documentation routes', () => {
   const app = new Elysia().use(setupRoutes());
 
   it('serves an OpenAPI document for Swagger UI', async () => {
-    const res = await app.handle(new Request('http://localhost/api-doc/openapi.json'));
+    const res = await app.handle(new Request('http://localhost/docs/openapi.json'));
     const spec = await res.json();
 
     expect(res.status).toBe(200);
@@ -46,13 +46,13 @@ describe('api documentation routes', () => {
   });
 
   it('serves a Swagger UI page wired to the OpenAPI document', async () => {
-    const res = await app.handle(new Request('http://localhost/api-doc'));
+    const res = await app.handle(new Request('http://localhost/docs'));
     const html = await res.text();
 
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/html');
     expect(html).toContain('SwaggerUIBundle');
-    expect(html).toContain('/api-doc/openapi.json');
+    expect(html).toContain('/docs/openapi.json');
   });
 
   it('keeps documented HTTP endpoints represented in OpenAPI paths', async () => {
@@ -61,7 +61,7 @@ describe('api documentation routes', () => {
       markdown.matchAll(/^### (GET|POST|PUT|PATCH|DELETE|WS) `([^`]+)`/gm)
     ).map((match) => normalizeDocumentedEndpoint(match[1], match[2]));
 
-    const res = await app.handle(new Request('http://localhost/api-doc/openapi.json'));
+    const res = await app.handle(new Request('http://localhost/docs/openapi.json'));
     const spec = await res.json();
 
     expect(documentedEndpoints.length).toBeGreaterThan(50);
