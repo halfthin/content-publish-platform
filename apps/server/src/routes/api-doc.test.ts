@@ -1,0 +1,72 @@
+import { describe, expect, it } from 'bun:test';
+import { Elysia } from 'elysia';
+import { setupRoutes } from './index';
+
+function normalizeDocumentedEndpoint(method: string, rawPath: string) {
+  const withoutQuery = rawPath.split('?')[0];
+  const normalizedPath = withoutQuery
+    .replace(/\*([A-Za-z0-9_]+)/g, '{$1}')
+    .replace(/:([A-Za-z0-9_]+)/g, '{$1}');
+
+  return {
+    method: method === 'WS' ? 'get' : method.toLowerCase(),
+    path: normalizedPath,
+  };
+}
+
+describe('api documentation routes', () => {
+  const app = new Elysia().use(setupRoutes());
+
+  it('serves an OpenAPI document for Swagger UI', async () => {
+    const res = await app.handle(new Request('http://localhost/api-doc/openapi.json'));
+    const spec = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(spec.openapi).toStartWith('3.');
+    expect(spec.info.title).toBe('Content Publish Platform API');
+    expect(
+      spec.paths['/api/publish'].post.requestBody.content['application/json'].schema
+    ).toMatchObject({
+      required: ['platform', 'accountId', 'action'],
+      properties: {
+        accountName: { type: 'string' },
+        action: { type: 'string' },
+        payload: { type: 'object', additionalProperties: true },
+      },
+    });
+    expect(
+      spec.paths['/api/xhs/publish'].post.requestBody.content['application/json'].schema.properties
+    ).toMatchObject({
+      accountName: { type: 'string' },
+      scheduleAt: { type: 'string' },
+      visibility: { type: 'string' },
+      isOriginal: { type: 'boolean' },
+    });
+    expect(spec.paths['/api/xhs/login/status'].get.responses['404']).toBeDefined();
+  });
+
+  it('serves a Swagger UI page wired to the OpenAPI document', async () => {
+    const res = await app.handle(new Request('http://localhost/api-doc'));
+    const html = await res.text();
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    expect(html).toContain('SwaggerUIBundle');
+    expect(html).toContain('/api-doc/openapi.json');
+  });
+
+  it('keeps documented HTTP endpoints represented in OpenAPI paths', async () => {
+    const markdown = await Bun.file('../../docs/API.md').text();
+    const documentedEndpoints = Array.from(
+      markdown.matchAll(/^### (GET|POST|PUT|PATCH|DELETE|WS) `([^`]+)`/gm)
+    ).map((match) => normalizeDocumentedEndpoint(match[1], match[2]));
+
+    const res = await app.handle(new Request('http://localhost/api-doc/openapi.json'));
+    const spec = await res.json();
+
+    expect(documentedEndpoints.length).toBeGreaterThan(50);
+    for (const endpoint of documentedEndpoints) {
+      expect(spec.paths[endpoint.path]?.[endpoint.method]).toBeDefined();
+    }
+  });
+});

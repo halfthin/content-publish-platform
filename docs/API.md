@@ -1,10 +1,20 @@
 # API 文档
 
-> 更新时间：2026-05-14  
+> 更新时间：2026-05-15  
 > 范围：`apps/server/src/routes/*`、`apps/server/src/index.ts` 当前后端路由。  
-> 默认 Base URL：`http://localhost:50000`（以 `PORT` 环境变量为准；部分历史文档仍可能写 `3000`）。
+> 默认 Base URL：`http://localhost:50000`（以 `PORT` 环境变量为准；部分历史文档仍可能写 `3000`）。  
+> Swagger UI：`/api-doc`；OpenAPI JSON：`/api-doc/openapi.json`。
 
 ## 1. 通用约定
+
+### Swagger / OpenAPI
+
+当前后端提供两种 API 文档入口：
+
+- `GET /api-doc`：Swagger UI 页面。
+- `GET /api-doc/openapi.json`：OpenAPI 3.0 JSON。
+
+`docs/API.md` 是叙述版文档；OpenAPI JSON 是 Swagger UI 使用的机器可读契约。测试 `apps/server/src/routes/api-doc.test.ts` 会校验叙述版文档列出的 HTTP/WS 端点都存在于 OpenAPI paths 中。
 
 ### 响应包络
 
@@ -372,7 +382,7 @@ Base：`/api/publish-status`
 
 Base：`/api/publish`
 
-> 这是本分支新增的通用发布入口，目标是统一后续平台接入。当前队列负载仍兼容旧 `PublishJobData`，`accountName` 暂未贯穿到队列负载；账号路由主要由 `accountId` 和现有队列逻辑决定。
+> 这是本分支新增的通用发布入口，目标是统一后续平台接入。当前队列负载仍兼容旧 `PublishJobData`，`accountName`、`action` 和 XHS MCP 可选发布字段会贯穿到队列负载。
 
 ### POST `/api/publish`
 

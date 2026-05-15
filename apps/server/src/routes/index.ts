@@ -2,6 +2,7 @@ import { cors } from '@elysiajs/cors';
 import { Elysia } from 'elysia';
 import { createLogger } from '../config/logger';
 import { setupAccountsRoutes } from './accounts';
+import { setupApiDocRoutes } from './api-doc';
 import { setupContentsRoutes } from './contents';
 import { setupMediaRoutes } from './media';
 import { setupMediaActionRoutes } from './media-actions';
@@ -41,6 +42,8 @@ export function setupRoutes() {
         status: 'ok',
         timestamp: new Date().toISOString(),
       }))
+      // Swagger/OpenAPI 文档
+      .use(setupApiDocRoutes())
       // 内容管理 API
       .use(setupContentsRoutes())
       // 账号管理 API
