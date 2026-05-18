@@ -45,6 +45,33 @@ describe('api documentation routes', () => {
     expect(spec.paths['/api/xhs/login/status'].get.responses['404']).toBeDefined();
   });
 
+  it('exposes frontend-agent UI guidance in the OpenAPI contract', async () => {
+    const res = await app.handle(new Request('http://localhost/docs/openapi.json'));
+    const spec = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(spec['x-frontend-agent'].intendedConsumer).toContain('frontend design agent');
+    expect(spec['x-frontend-agent'].mvpNavigation).toEqual([
+      '内容库',
+      '账号管理',
+      '发布状态',
+      '小红书',
+    ]);
+
+    const contentsTag = spec.tags.find((tag: { name: string }) => tag.name === 'Contents');
+    expect(contentsTag['x-ui'].navLabel).toBe('内容库');
+    expect(contentsTag['x-ui'].stateMachine).toContain('PENDING');
+
+    expect(spec.paths['/api/contents'].get['x-ui']).toMatchObject({
+      view: 'content-list',
+      primaryActions: ['scanInbox', 'openDetail'],
+    });
+    expect(spec.paths['/api/contents/{id}/publish'].post['x-ui']).toMatchObject({
+      action: 'publish',
+      visibleWhen: { status: 'APPROVED' },
+    });
+  });
+
   it('serves a Swagger UI page wired to the OpenAPI document', async () => {
     const res = await app.handle(new Request('http://localhost/docs'));
     const html = await res.text();

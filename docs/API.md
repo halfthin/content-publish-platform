@@ -1,6 +1,6 @@
 # API 文档
 
-> 更新时间：2026-05-15  
+> 更新时间：2026-05-17  
 > 范围：`apps/server/src/routes/*`、`apps/server/src/index.ts` 当前后端路由。  
 > 默认 Base URL：`http://localhost:50000`（以 `PORT` 环境变量为准；部分历史文档仍可能写 `3000`）。  
 > Swagger UI：`/docs`；OpenAPI JSON：`/docs/openapi.json`。
@@ -15,6 +15,24 @@
 - `GET /docs/openapi.json`：OpenAPI 3.0 JSON。
 
 `docs/API.md` 是叙述版文档；OpenAPI JSON 是 Swagger UI 使用的机器可读契约。测试 `apps/server/src/routes/api-doc.test.ts` 会校验叙述版文档列出的 HTTP/WS 端点都存在于 OpenAPI paths 中。
+
+### 前端 Agent 设计指南
+
+本项目的 Swagger/OpenAPI 现在不仅描述接口，还承担前端 UI 设计输入的职责。
+
+- `tags[*].description`：说明业务域和页面职责。
+- `tags[*].x-ui`：给前端 agent 的导航、页面、表格和状态机提示。
+- `paths[*].x-ui`：给具体按钮、表单、弹窗、危险操作、实时通道的提示。
+- `x-frontend-agent`：说明前端首页导航、MVP 流程和优先级。
+
+推荐前端 IA：
+
+1. 内容库：`scan-inbox` → 内容列表 → 详情预览 → 审核通过/拒绝 → 发布。
+2. 账号管理：账号列表 → 详情 → Cookie 导入 → 登录状态检查。
+3. 发布状态：发布统计 → 发布历史 → 失败重试。
+4. 小红书：登录二维码 → 登录状态 → 快速发布。
+
+设计时优先依据状态枚举决定可用按钮，不要硬编码“某个路由一定可见”。
 
 ### 响应包络
 
@@ -164,7 +182,9 @@ Base：`/api/contents`
 
 ### POST `/api/contents/scan-inbox`
 
-扫描 `content/inbox`，导入待审核内容。
+扫描 `${CONTENT_DIR}/inbox`，导入待审核内容。
+
+`CONTENT_DIR` 可配置；当前实现固定使用其中的 `inbox` 子目录作为待审核入口，`approved` 与 `published` 也基于同一个基目录。
 
 ### POST `/api/contents/:id/publish`
 
@@ -178,6 +198,8 @@ Base：`/api/contents`
   "accountId": "account-id"
 }
 ```
+
+`accountId` 当前实现是可选的；如果不传，会回退到内部默认账号位。前端仍建议显式选择账号，以免误发。
 
 **响应**
 
@@ -886,6 +908,7 @@ curl 'http://localhost:50000/api/xhs/login/status?instance=xhs-1'
 
 ## 13. 已知限制 / 注意事项
 
+- `CONTENT_DIR` 可配置，但 inbox/approved/published 子目录名目前是约定固定的。
 - `/api/publish` 与 `/api/xhs/publish*` 当前会入队到现有 BullMQ 发布队列；完整发布依赖 Redis、Postgres、有效账号、有效 Cookie 或 xhs-mcp 登录态。
 - `PublishJobData` 与新 `PublishJobPayload` 暂时并存，后续需要统一类型边界。
 - `XHS_MCP_INSTANCES.accountName` 已在配置类型中支持，但当前 publisher 实例注册 key 仍主要使用 `name`。
