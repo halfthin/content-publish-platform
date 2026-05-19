@@ -1,6 +1,7 @@
 import { config } from 'dotenv';
 import { Elysia } from 'elysia';
 import { ws } from 'elysia/ws';
+import { assertValidProductionEnv } from './config/env';
 import { logger } from './config/logger';
 import { browserPool, initializeBrowser } from './config/playwright';
 import { disconnectPrisma } from './config/prisma';
@@ -18,6 +19,10 @@ import { setupWebSocket } from './websocket/server';
 
 // Load environment variables from apps/server/.env
 config({ path: '.env', override: true });
+
+if (process.env.NODE_ENV === 'production') {
+  assertValidProductionEnv();
+}
 
 const PORT = process.env.PORT || 50000;
 
