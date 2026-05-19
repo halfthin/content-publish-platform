@@ -17,7 +17,8 @@
     "db:migrate": "cd apps/server && bun run db:migrate",
     "db:push": "cd apps/server && bun run db:push",
     "docker:up": "docker-compose -f docker/docker-compose.yml up -d",
-    "docker:down": "docker-compose -f docker/docker-compose.yml down"
+    "docker:down": "docker-compose -f docker/docker-compose.yml down",
+    "smoke:api": "bash scripts/smoke-api.sh"
   },
   "devDependencies": {
     "concurrently": "^9.0.0"

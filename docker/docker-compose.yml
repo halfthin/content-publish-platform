@@ -12,9 +12,9 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       NODE_ENV: production
-      PORT: 3000
+      PORT: 50000
     ports:
-      - "50001:3000"
+      - "50000:50000"
     volumes:
       - ../content:/app/content
     networks:
