@@ -1,6 +1,7 @@
 # 生产就绪 Runbook
 
-> 当前状态：推进中  
+> 当前状态：默认门禁通过；真实 XHS 发布需测试账号显式验证  
+> 最近验证日期：2026-05-19  
 > 服务范围：`apps/server` API 服务  
 > Swagger：`/docs`（受 `EXPOSE_DOCS` 控制）  
 > OpenAPI JSON：`/docs/openapi.json`（受 `EXPOSE_DOCS` 控制）
@@ -109,22 +110,36 @@ bun run smoke:api
 
 ## 9. 上线 Checklist
 
-- [ ] `cd apps/server && bun run check` 通过
-- [ ] `cd apps/server && bun test` 通过
-- [ ] `bash -n scripts/smoke-api.sh` 通过
+- [x] `cd apps/server && bun run check` 通过
+- [x] `cd apps/server && bun test` 通过
+- [x] `bash -n scripts/smoke-api.sh` 通过
 - [ ] Docker image 可构建
-- [ ] `/health` 返回 ok
-- [ ] `/ready` 返回 ready
-- [ ] smoke 脚本通过
-- [ ] 管理 API 鉴权启用
-- [ ] Webhook token 校验启用
-- [ ] 生产 secret 非 placeholder / 非弱密钥
-- [ ] 数据库迁移完成
-- [ ] 回滚流程可执行
-- [ ] 默认模拟发布闭环测试通过
+- [x] `/health` 路由有测试覆盖
+- [x] `/ready` 路由有测试覆盖
+- [ ] smoke 脚本已对 live deployment 通过
+- [x] 管理 API 鉴权有测试覆盖
+- [x] Webhook token 校验有回归测试覆盖
+- [x] 生产 secret 非 placeholder / 非弱密钥校验有测试覆盖
+- [ ] 数据库迁移已在目标环境完成
+- [ ] 回滚流程已在目标环境演练
+- [x] 默认模拟发布闭环测试通过
 - [ ] 真实 XHS 测试账号发布闭环通过，或本次 release 标记为 API-only
 
-## 10. 已知限制
+## 10. 最近验证证据
+
+2026-05-19 已执行：
+
+```bash
+cd apps/server && bun run check
+cd apps/server && bun test
+bash -n scripts/smoke-api.sh
+cd apps/server && bun test src/config/env.test.ts src/middleware/auth.test.ts src/routes/health.test.ts src/routes/publish-flow.test.ts src/routes/api-doc.test.ts
+bun test tests/real-xhs-smoke.test.ts
+```
+
+结果：默认 server 测试 `154 pass / 0 fail`；目标生产就绪测试 `17 pass / 0 fail`；真实 XHS smoke 默认 `2 skip / 0 fail`。未执行 live deployment smoke、Docker image 构建、真实 XHS 测试账号发布。
+
+## 11. 已知限制
 
 - 真实 XHS 发布依赖测试账号、XHS MCP/Gateway、有效 cookie 或登录态。
 - 默认测试不会触发第三方平台发布。
