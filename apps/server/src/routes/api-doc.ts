@@ -206,6 +206,18 @@ const healthExample = {
   timestamp: '2026-05-17T00:00:00.000Z',
 };
 
+const readinessExample = {
+  status: 'ready',
+  checks: {
+    env: { status: 'ok' },
+    database: { status: 'ok' },
+    redis: { status: 'ok' },
+    contentDir: { status: 'ok' },
+    gateway: { status: 'ok' },
+  },
+  timestamp: '2026-05-17T00:00:00.000Z',
+};
+
 const contentExample = {
   id: 'content-001',
   title: '今天的穿搭分享',
@@ -467,6 +479,26 @@ export const openApiDocument = {
           timestamp: { type: 'string', format: 'date-time' },
         },
         required: ['status', 'timestamp'],
+      },
+      ReadinessCheck: {
+        type: 'object',
+        properties: {
+          status: { type: 'string', enum: ['ok', 'warn', 'error'] },
+          message: { type: 'string' },
+        },
+        required: ['status'],
+      },
+      ReadinessStatus: {
+        type: 'object',
+        properties: {
+          status: { type: 'string', enum: ['ready', 'unready'] },
+          checks: {
+            type: 'object',
+            additionalProperties: ref('ReadinessCheck'),
+          },
+          timestamp: { type: 'string', format: 'date-time' },
+        },
+        required: ['status', 'checks', 'timestamp'],
       },
       Pagination: {
         type: 'object',
@@ -978,6 +1010,30 @@ export const openApiDocument = {
         description: 'Returns current service health and server timestamp.',
         operationId: 'getHealth',
         responses: { 200: directJsonResponse('Health status', ref('HealthCheck'), healthExample) },
+      },
+    },
+    '/ready': {
+      get: {
+        tags: ['Health'],
+        summary: 'Readiness check',
+        description:
+          'Aggregates environment, database, Redis, content directory, and gateway readiness checks. Returns 503 when any required check reports error.',
+        operationId: 'getReadiness',
+        responses: {
+          200: directJsonResponse(
+            'Service is ready for traffic',
+            ref('ReadinessStatus'),
+            readinessExample
+          ),
+          503: directJsonResponse('Service is not ready for traffic', ref('ReadinessStatus'), {
+            ...readinessExample,
+            status: 'unready',
+            checks: {
+              ...readinessExample.checks,
+              database: { status: 'error', message: 'database unreachable' },
+            },
+          }),
+        },
       },
     },
 

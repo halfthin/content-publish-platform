@@ -24,6 +24,7 @@ describe('api documentation routes', () => {
     expect(res.status).toBe(200);
     expect(spec.openapi).toStartWith('3.');
     expect(spec.info.title).toBe('Content Publish Platform API');
+    expect(spec.paths['/ready'].get).toBeDefined();
     expect(
       spec.paths['/api/publish'].post.requestBody.content['application/json'].schema
     ).toMatchObject({

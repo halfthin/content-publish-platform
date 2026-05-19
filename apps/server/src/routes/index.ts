@@ -4,6 +4,7 @@ import { createLogger } from '../config/logger';
 import { setupAccountsRoutes } from './accounts';
 import { setupApiDocRoutes } from './api-doc';
 import { setupContentsRoutes } from './contents';
+import { setupHealthRoutes } from './health';
 import { setupMediaRoutes } from './media';
 import { setupMediaActionRoutes } from './media-actions';
 import { setupPublishRoutes } from './publish';
@@ -38,10 +39,7 @@ export function setupRoutes() {
         version: '1.0.0',
         status: 'running',
       }))
-      .get('/health', () => ({
-        status: 'ok',
-        timestamp: new Date().toISOString(),
-      }))
+      .use(setupHealthRoutes())
       // Swagger/OpenAPI 文档
       .use(setupApiDocRoutes())
       // 内容管理 API
