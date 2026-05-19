@@ -5,6 +5,7 @@ import {
   createInMemoryAccountCheckLoginCallbackStore,
 } from '../services/account-check-login-callbacks.service';
 import { createInMemoryOpenClawCallbackEventDeduper } from '../services/openclaw-callback-deduper';
+import type { SetupWebhookRoutesOptions } from './webhook';
 
 const publishLogFindUniqueMock = mock(async () => null);
 const publishLogFindFirstMock = mock(async () => null);
@@ -14,31 +15,25 @@ const contentUpdateMock = mock(async () => ({}));
 const accountUpdateMock = mock(async () => ({}));
 const moveToPublishedMock = mock(async () => undefined);
 
-mock.module('../config/prisma', () => ({
-  prisma: {
-    publishLog: {
-      findUnique: publishLogFindUniqueMock,
-      findFirst: publishLogFindFirstMock,
-      findMany: publishLogFindManyMock,
-      update: publishLogUpdateMock,
-    },
-    content: {
-      update: contentUpdateMock,
-    },
-    account: {
-      update: accountUpdateMock,
-    },
+const prismaMock = {
+  publishLog: {
+    findUnique: publishLogFindUniqueMock,
+    findFirst: publishLogFindFirstMock,
+    findMany: publishLogFindManyMock,
+    update: publishLogUpdateMock,
   },
-}));
-
-mock.module('../services/content.service', () => ({
-  moveToPublished: moveToPublishedMock,
-}));
+  content: {
+    update: contentUpdateMock,
+  },
+  account: {
+    update: accountUpdateMock,
+  },
+} as unknown as NonNullable<SetupWebhookRoutesOptions['prismaClient']>;
 
 describe('publish result webhook routes', () => {
   let setupWebhookRoutes: typeof import('./webhook').setupWebhookRoutes;
   let addPendingCheckLoginCallback: typeof import('./webhook').addPendingCheckLoginCallback;
-  let callbackToken = '';
+  const callbackToken = 'gateway-callback-token';
   let accountCheckLoginCallbackStore: AccountCheckLoginCallbackStore;
 
   function createStubActionService() {
@@ -59,11 +54,7 @@ describe('publish result webhook routes', () => {
   }
 
   beforeAll(async () => {
-    process.env.CPP_FROM_GATEWAY_TOKEN = 'gateway-callback-token';
     ({ setupWebhookRoutes, addPendingCheckLoginCallback } = await import('./webhook'));
-    ({
-      gatewayConfig: { fromGatewayToken: callbackToken },
-    } = await import('../config/gateway'));
   });
 
   beforeEach(() => {
@@ -90,6 +81,9 @@ describe('publish result webhook routes', () => {
         mediaActionsService: createStubActionService(),
         callbackEventDeduper: createInMemoryOpenClawCallbackEventDeduper(),
         accountCheckLoginCallbackStore,
+        gatewayCallbackToken: callbackToken,
+        prismaClient: prismaMock,
+        moveToPublished: moveToPublishedMock,
       })
     );
 
@@ -172,6 +166,9 @@ describe('publish result webhook routes', () => {
         mediaActionsService: createStubActionService(),
         callbackEventDeduper: createInMemoryOpenClawCallbackEventDeduper(),
         accountCheckLoginCallbackStore,
+        gatewayCallbackToken: callbackToken,
+        prismaClient: prismaMock,
+        moveToPublished: moveToPublishedMock,
       })
     );
 
@@ -242,6 +239,9 @@ describe('publish result webhook routes', () => {
         mediaActionsService: createStubActionService(),
         callbackEventDeduper: createInMemoryOpenClawCallbackEventDeduper(),
         accountCheckLoginCallbackStore,
+        gatewayCallbackToken: callbackToken,
+        prismaClient: prismaMock,
+        moveToPublished: moveToPublishedMock,
       })
     );
 
@@ -296,6 +296,9 @@ describe('publish result webhook routes', () => {
         mediaActionsService: createStubActionService(),
         callbackEventDeduper: createInMemoryOpenClawCallbackEventDeduper(),
         accountCheckLoginCallbackStore,
+        gatewayCallbackToken: callbackToken,
+        prismaClient: prismaMock,
+        moveToPublished: moveToPublishedMock,
       })
     );
 
@@ -345,6 +348,9 @@ describe('publish result webhook routes', () => {
         mediaActionsService: createStubActionService(),
         callbackEventDeduper: createInMemoryOpenClawCallbackEventDeduper(),
         accountCheckLoginCallbackStore,
+        gatewayCallbackToken: callbackToken,
+        prismaClient: prismaMock,
+        moveToPublished: moveToPublishedMock,
       })
     );
 
@@ -407,6 +413,9 @@ describe('publish result webhook routes', () => {
         mediaActionsService: createStubActionService(),
         callbackEventDeduper: createInMemoryOpenClawCallbackEventDeduper(),
         accountCheckLoginCallbackStore,
+        gatewayCallbackToken: callbackToken,
+        prismaClient: prismaMock,
+        moveToPublished: moveToPublishedMock,
       })
     );
 
@@ -447,6 +456,9 @@ describe('publish result webhook routes', () => {
         mediaActionsService: createStubActionService(),
         callbackEventDeduper: createInMemoryOpenClawCallbackEventDeduper(),
         accountCheckLoginCallbackStore,
+        gatewayCallbackToken: callbackToken,
+        prismaClient: prismaMock,
+        moveToPublished: moveToPublishedMock,
       })
     );
 

@@ -51,12 +51,15 @@ export interface CheckLoginResult {
   qrcodeUrl?: string;
 }
 
-interface SetupWebhookRoutesOptions {
+export interface SetupWebhookRoutesOptions {
   mediaActionsService?: MediaActionsService;
+  gatewayCallbackToken?: string;
   mediaActionCallbackToken?: string;
   callbackEventDeduper?: OpenClawCallbackEventDeduper;
   accountCheckLoginCallbackStore?: AccountCheckLoginCallbackStore;
   openClawResultStorage?: OpenClawResultStorageService;
+  prismaClient?: typeof prisma;
+  moveToPublished?: typeof moveToPublished;
 }
 
 function validateOptionalBearerToken(
@@ -78,13 +81,13 @@ function validateOptionalBearerToken(
 /**
  * 验证回调认证
  */
-function validateCallbackToken(authHeader: string | undefined): boolean {
-  if (!authHeader) {
+function validateCallbackToken(authHeader: string | undefined, expectedToken: string): boolean {
+  if (!expectedToken || !authHeader) {
     return false;
   }
 
   const token = authHeader.replace(/^Bearer\s+/i, '');
-  return token === gatewayConfig.fromGatewayToken;
+  return token === expectedToken;
 }
 
 function normalizePublishPlatform(actionType: string | undefined): string | null {
@@ -280,6 +283,9 @@ export function setupWebhookRoutes(options: SetupWebhookRoutesOptions = {}) {
     options.accountCheckLoginCallbackStore || createRedisAccountCheckLoginCallbackStore();
   const openClawResultStorage =
     options.openClawResultStorage || createOpenClawResultStorageService();
+  const db = options.prismaClient || prisma;
+  const moveContentToPublished = options.moveToPublished || moveToPublished;
+  const gatewayCallbackToken = options.gatewayCallbackToken ?? gatewayConfig.fromGatewayToken;
 
   return (
     new Elysia({ prefix: '/api/webhook' })
@@ -291,7 +297,7 @@ export function setupWebhookRoutes(options: SetupWebhookRoutesOptions = {}) {
           const authHeader = headers.authorization;
           const rawBody = normalizeRawBody(body);
 
-          if (!validateCallbackToken(authHeader)) {
+          if (!validateCallbackToken(authHeader, gatewayCallbackToken)) {
             logger.warn('Invalid callback token', {
               received: authHeader?.substring(0, 10),
             });
@@ -335,13 +341,13 @@ export function setupWebhookRoutes(options: SetupWebhookRoutesOptions = {}) {
 
           try {
             let publishLog = payload.refs?.publishLogId
-              ? await prisma.publishLog.findUnique({
+              ? await db.publishLog.findUnique({
                   where: { id: payload.refs.publishLogId },
                 })
               : null;
 
             if (!publishLog) {
-              publishLog = await prisma.publishLog.findFirst({
+              publishLog = await db.publishLog.findFirst({
                 where: {
                   externalTaskId: payload.taskId,
                 },
@@ -350,7 +356,7 @@ export function setupWebhookRoutes(options: SetupWebhookRoutesOptions = {}) {
             }
 
             if (!publishLog && payload.refs?.contentId && payload.refs?.accountId) {
-              const publishLogs = await prisma.publishLog.findMany({
+              const publishLogs = await db.publishLog.findMany({
                 where: {
                   contentId: payload.refs.contentId,
                   accountId: payload.refs.accountId,
@@ -380,7 +386,7 @@ export function setupWebhookRoutes(options: SetupWebhookRoutesOptions = {}) {
 
             // 更新 PublishLog
             if (payload.status === 'success') {
-              await prisma.publishLog.update({
+              await db.publishLog.update({
                 where: { id: publishLog.id },
                 data: {
                   status: 'SUCCESS',
@@ -395,7 +401,7 @@ export function setupWebhookRoutes(options: SetupWebhookRoutesOptions = {}) {
               });
 
               // 更新 Content 状态
-              await prisma.content.update({
+              await db.content.update({
                 where: { id: resolvedContentId },
                 data: {
                   status: 'PUBLISHED',
@@ -405,7 +411,7 @@ export function setupWebhookRoutes(options: SetupWebhookRoutesOptions = {}) {
 
               // 移动到已发布目录
               try {
-                await moveToPublished(resolvedContentId, resolvedPlatform);
+                await moveContentToPublished(resolvedContentId, resolvedPlatform);
               } catch (moveError) {
                 logger.warn('Failed to move to published directory', {
                   contentId: resolvedContentId,
@@ -418,7 +424,7 @@ export function setupWebhookRoutes(options: SetupWebhookRoutesOptions = {}) {
                 url: payload.result?.url,
               });
             } else if (payload.status === 'queued' || payload.status === 'running') {
-              await prisma.publishLog.update({
+              await db.publishLog.update({
                 where: { id: publishLog.id },
                 data: {
                   status: payload.status === 'queued' ? 'QUEUED' : 'RUNNING',
@@ -431,7 +437,7 @@ export function setupWebhookRoutes(options: SetupWebhookRoutesOptions = {}) {
                 },
               });
             } else {
-              await prisma.publishLog.update({
+              await db.publishLog.update({
                 where: { id: publishLog.id },
                 data: {
                   status: payload.status === 'needs-auth' ? 'NEEDS_AUTH' : 'FAILED',
@@ -445,7 +451,7 @@ export function setupWebhookRoutes(options: SetupWebhookRoutesOptions = {}) {
                 },
               });
 
-              await prisma.content.update({
+              await db.content.update({
                 where: { id: resolvedContentId },
                 data: {
                   status: 'FAILED',
@@ -644,7 +650,7 @@ export function setupWebhookRoutes(options: SetupWebhookRoutesOptions = {}) {
           const authHeader = headers.authorization;
           const rawBody = normalizeRawBody(body);
 
-          if (!validateCallbackToken(authHeader)) {
+          if (!validateCallbackToken(authHeader, gatewayCallbackToken)) {
             logger.warn('Invalid callback token for check-login', {
               received: authHeader?.substring(0, 10),
             });
@@ -731,7 +737,7 @@ export function setupWebhookRoutes(options: SetupWebhookRoutesOptions = {}) {
 
             // 更新账号登录状态
             try {
-              await prisma.account.update({
+              await db.account.update({
                 where: { id: accountId },
                 data: {
                   loginStatus: loggedIn ? 'LOGGED_IN' : 'EXPIRED',
