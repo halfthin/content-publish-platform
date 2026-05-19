@@ -344,6 +344,11 @@ export const openApiDocument = {
       '- `/api/xhs/*` is the direct XHS MCP convenience surface; `/api/publish` is the generic Publisher Framework surface.',
       '- `/api/media/*` and `/api/media/actions/*` are legacy/material-workflow APIs that are still mounted but not required for the service-only publishing MVP.',
       '',
+      'Production access control:',
+      '- Production management APIs under `/api/*` require `Authorization: Bearer <API_AUTH_TOKEN>` unless the route is a webhook callback.',
+      '- Webhook callbacks use independent gateway callback tokens such as `CPP_FROM_GATEWAY_TOKEN` and are not authorized by `API_AUTH_TOKEN`.',
+      '- `/docs` and `/docs/openapi.json` may be disabled in production when `EXPOSE_DOCS=false`.',
+      '',
       'Narrative documentation lives in docs/API.md and is kept synchronized by apps/server/src/routes/api-doc.test.ts.',
     ].join('\n'),
   },
@@ -442,8 +447,16 @@ export const openApiDocument = {
       bearerAuth: {
         type: 'http',
         scheme: 'bearer',
+        bearerFormat: 'API_AUTH_TOKEN',
+        description:
+          'Production management API token. Send as Authorization: Bearer <API_AUTH_TOKEN> for protected /api/* routes except webhook callbacks.',
+      },
+      webhookBearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
         bearerFormat: 'CPP_FROM_GATEWAY_TOKEN',
-        description: 'Required only for webhook callbacks from trusted gateway integrations.',
+        description:
+          'Machine-to-machine callback token for webhook routes. This is intentionally independent from API_AUTH_TOKEN.',
       },
     },
     schemas: {
@@ -1941,7 +1954,7 @@ export const openApiDocument = {
         description:
           'Gateway/OpenClaw callback for publish results. Integration-only endpoint; normal frontend should read PublishStatus instead.',
         operationId: 'receivePublishResultWebhook',
-        security: [{ bearerAuth: [] }],
+        security: [{ webhookBearerAuth: [] }],
         parameters: [pathParam('platform', 'Platform short name or full name.')],
         requestBody: requestBody(ref('WebhookEnvelope'), {
           version: '1.0',
@@ -1968,7 +1981,7 @@ export const openApiDocument = {
         description:
           'Media action callback. Supports JSON envelope and multipart uploads containing generated files.',
         operationId: 'receiveMediaActionResultWebhook',
-        security: [{ bearerAuth: [] }],
+        security: [{ webhookBearerAuth: [] }],
         parameters: [pathParam('actionType', 'Media action type, e.g. image-to-image.')],
         requestBody: {
           required: true,
@@ -1995,7 +2008,7 @@ export const openApiDocument = {
         description:
           'Gateway callback for account login checks. Updates Account.loginStatus and stores latest callback snapshot.',
         operationId: 'receiveCheckLoginResultWebhook',
-        security: [{ bearerAuth: [] }],
+        security: [{ webhookBearerAuth: [] }],
         parameters: [pathParam('platform', 'Platform short name or full name.')],
         requestBody: requestBody(ref('WebhookEnvelope'), {
           version: '1.0',
@@ -2028,6 +2041,31 @@ export const openApiDocument = {
     },
   },
 } as const;
+
+type MutableOpenApiOperation = {
+  description?: string;
+  security?: Array<Record<string, string[]>>;
+};
+
+const managementAuthNote =
+  'Production auth: send Authorization: Bearer <API_AUTH_TOKEN>. Webhook callback routes use separate callback tokens.';
+
+for (const [path, methods] of Object.entries(openApiDocument.paths) as Array<
+  [string, Record<string, MutableOpenApiOperation>]
+>) {
+  if (!path.startsWith('/api/') || path.startsWith('/api/webhook/')) {
+    continue;
+  }
+
+  for (const operation of Object.values(methods)) {
+    operation.security = [{ bearerAuth: [] }];
+    operation.description = operation.description
+      ? `${operation.description}
+
+${managementAuthNote}`
+      : managementAuthNote;
+  }
+}
 
 const swaggerHtml = `<!doctype html>
 <html lang="en">

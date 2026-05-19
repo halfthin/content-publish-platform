@@ -1,6 +1,7 @@
 import { cors } from '@elysiajs/cors';
 import { Elysia } from 'elysia';
 import { createLogger } from '../config/logger';
+import { setupAuthMiddleware } from '../middleware/auth';
 import { setupAccountsRoutes } from './accounts';
 import { setupApiDocRoutes } from './api-doc';
 import { setupContentsRoutes } from './contents';
@@ -34,6 +35,7 @@ export function setupRoutes() {
           allowedHeaders: ['Content-Type', 'Authorization'],
         })
       )
+      .use(setupAuthMiddleware())
       .get('/', () => ({
         name: 'Content Publish Platform API',
         version: '1.0.0',
