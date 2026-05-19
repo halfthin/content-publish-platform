@@ -34,6 +34,23 @@
 
 设计时优先依据状态枚举决定可用按钮，不要硬编码“某个路由一定可见”。
 
+### 前端 Agent UI 合约
+
+`GET /docs/openapi.json` 的顶层 `x-frontend-agent` 是前端设计 agent 的机器可读 UI 合约。它包含：
+
+- `pages`：MVP 页面、导航路径、核心组件和主接口映射。
+- `workflows.reviewAndPublish`：内容审核发布闭环，从 `scan-inbox` 到 `PublishLog.status=SUCCESS`。
+- `workflows.accountCookieLogin`：账号创建、Cookie 导入、异步登录态检查和回调状态读取。
+- `workflows.publishFailureRecovery`：发布失败查看、重试和人工补偿入口。
+- `entityStates`：`Content.status`、`Account.status/loginStatus`、`PublishLog.status` 的按钮可见性和终态规则。
+- `formContracts`：关键表单字段、组件建议、接口必填与 UI 必填差异。
+- `realtime`：SSE `GET /api/publish/progress` 与 WebSocket `WS /ws` 的用途。
+- `auth.production`：生产环境 `Authorization: Bearer <API_AUTH_TOKEN>`、公开路由和 docs 暴露开关。
+- `contentSource`：`CONTENT_DIR` 可配置；`inbox`、`approved`、`published` 是固定子目录约定。
+- `endpointPriority`：MVP 主接口、legacy optional 接口和 integration-only webhook 接口分层。
+
+前端 agent 应优先实现 `pages` 中的四个 MVP 页面：`/contents`、`/accounts`、`/publish-status`、`/xhs`。`/api/media/*` 与 `/api/media/actions/*` 可作为素材工作流的可选后续模块，不应阻塞主发布 UI。
+
 ### 响应包络
 
 大多数 JSON API 返回：

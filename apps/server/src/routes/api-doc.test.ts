@@ -76,6 +76,49 @@ describe('api documentation routes', () => {
     });
   });
 
+  it('exposes an implementation-ready UI contract for frontend design agents', async () => {
+    const res = await app.handle(new Request('http://localhost/docs/openapi.json'));
+    const spec = await res.json();
+    const uiContract = spec['x-frontend-agent'];
+
+    expect(res.status).toBe(200);
+    expect(uiContract.pages.map((page: { route: string }) => page.route)).toEqual([
+      '/contents',
+      '/accounts',
+      '/publish-status',
+      '/xhs',
+    ]);
+    expect(uiContract.workflows.reviewAndPublish.steps).toContainEqual(
+      expect.objectContaining({
+        id: 'queue-publish',
+        endpoint: 'POST /api/contents/{id}/publish',
+      })
+    );
+    expect(uiContract.entityStates.content.transitions.APPROVED.allowedActions).toContain(
+      'publish'
+    );
+    expect(uiContract.formContracts.publishApprovedContent.fields.accountId.requiredInUi).toBe(
+      true
+    );
+    expect(uiContract.realtime.sse.endpoint).toBe('GET /api/publish/progress');
+    expect(uiContract.auth.production.publicRoutes).toContain('/ready');
+    expect(uiContract.contentSource).toMatchObject({
+      baseDirConfigurable: true,
+      fixedSubdirectories: ['inbox', 'approved', 'published'],
+    });
+
+    expect(spec.paths['/api/contents/{id}'].get['x-ui'].dataDependencies).toContain(
+      'GET /api/accounts'
+    );
+    expect(spec.paths['/api/accounts'].get['x-ui'].emptyState.nextActions).toContain(
+      'createAccount'
+    );
+
+    const markdown = await Bun.file('../../docs/API.md').text();
+    expect(markdown).toContain('### 前端 Agent UI 合约');
+    expect(markdown).toContain('reviewAndPublish');
+  });
+
   it('serves a Swagger UI page wired to the OpenAPI document', async () => {
     const res = await app.handle(new Request('http://localhost/docs'));
     const html = await res.text();

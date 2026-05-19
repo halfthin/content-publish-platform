@@ -428,6 +428,7 @@ export const openApiDocument = {
   ],
   'x-frontend-agent': {
     intendedConsumer: 'ui-ux-pro-max or equivalent frontend design agent',
+    sourceOfTruth: '/docs/openapi.json',
     designPriority: [
       'Content review and publish workflow',
       'Account/cookie/login health workflow',
@@ -442,6 +443,279 @@ export const openApiDocument = {
       'For XHS publishing from approved content, prefer POST /api/contents/{id}/publish over direct /api/xhs/publish so PublishLog and content archiving stay consistent.',
       'Use /api/publish/progress SSE for live task feedback and /ws for broad app notifications.',
     ],
+    pages: [
+      {
+        id: 'content-library',
+        route: '/contents',
+        navLabel: '内容库',
+        purpose:
+          'Review imported inbox content, preview media/markdown, approve/reject, then publish.',
+        primaryComponents: [
+          'status-tabs',
+          'content-table',
+          'preview-drawer',
+          'review-action-bar',
+          'publish-dialog',
+        ],
+        primaryEndpoints: {
+          list: 'GET /api/contents',
+          detail: 'GET /api/contents/{id}',
+          previewFile: 'GET /api/contents/{id}/files/{filepath}',
+          scanInbox: 'POST /api/contents/scan-inbox',
+          approve: 'POST /api/contents/{id}/approve',
+          reject: 'POST /api/contents/{id}/reject',
+          publish: 'POST /api/contents/{id}/publish',
+          accountPicker: 'GET /api/accounts',
+        },
+        emptyState: {
+          title: '暂无待审核内容',
+          nextActions: ['scanInbox', 'check CONTENT_DIR/inbox'],
+        },
+      },
+      {
+        id: 'accounts',
+        route: '/accounts',
+        navLabel: '账号管理',
+        purpose:
+          'Manage platform accounts, import cookies, check login state, and inspect publish history.',
+        primaryComponents: [
+          'account-table',
+          'account-form-dialog',
+          'cookie-import-dialog',
+          'login-health-card',
+          'account-publish-history',
+        ],
+        primaryEndpoints: {
+          list: 'GET /api/accounts',
+          create: 'POST /api/accounts',
+          detail: 'GET /api/accounts/{id}',
+          update: 'PUT /api/accounts/{id}',
+          toggleStatus: 'POST /api/accounts/{id}/toggle-status',
+          importCookies: 'POST /api/accounts/{id}/cookies',
+          checkLogin: 'POST /api/accounts/{id}/cookies/check-login',
+          history: 'GET /api/publish-status/account/{accountId}',
+        },
+        emptyState: {
+          title: '暂无发布账号',
+          nextActions: ['createAccount', 'importCookies'],
+        },
+      },
+      {
+        id: 'publish-status',
+        route: '/publish-status',
+        navLabel: '发布状态',
+        purpose: 'Monitor publish logs, statistics, queue state, failures, and retries.',
+        primaryComponents: [
+          'stat-cards',
+          'status-breakdown',
+          'publish-history-table',
+          'failure-detail-dialog',
+          'retry-action',
+        ],
+        primaryEndpoints: {
+          stats: 'GET /api/publish-status/stats',
+          allHistory: 'GET /api/publish-status/account/all',
+          contentHistory: 'GET /api/publish-status/content/{contentId}',
+          retry: 'POST /api/publish-status/{id}/retry',
+          queueState: 'GET /api/publish/{jobId}',
+        },
+        emptyState: {
+          title: '暂无发布记录',
+          nextActions: ['publishApprovedContent'],
+        },
+      },
+      {
+        id: 'xhs',
+        route: '/xhs',
+        navLabel: '小红书',
+        purpose: 'Operate XHS MCP login and advanced direct publish tools.',
+        primaryComponents: [
+          'instance-selector',
+          'qr-login-card',
+          'login-status-card',
+          'quick-publish-form',
+        ],
+        primaryEndpoints: {
+          qrCode: 'GET /api/xhs/login/qrcode',
+          loginStatus: 'GET /api/xhs/login/status',
+          refreshLogin: 'POST /api/xhs/login/refresh',
+          quickPublish: 'POST /api/xhs/publish',
+          quickVideoPublish: 'POST /api/xhs/publish/video',
+        },
+        cautions: [
+          'For reviewed content, route publishing through POST /api/contents/{id}/publish.',
+          'Direct quick publish is advanced and may bypass content review/archive expectations.',
+        ],
+      },
+    ],
+    workflows: {
+      reviewAndPublish: {
+        title: '内容审核发布闭环',
+        successEndState: 'Content.status=PUBLISHED and PublishLog.status=SUCCESS',
+        steps: [
+          {
+            id: 'scan-inbox',
+            endpoint: 'POST /api/contents/scan-inbox',
+            ui: 'toolbar button on content list',
+          },
+          {
+            id: 'review-detail',
+            endpoint: 'GET /api/contents/{id}',
+            ui: 'detail drawer or page with gallery and markdown preview',
+          },
+          {
+            id: 'approve',
+            endpoint: 'POST /api/contents/{id}/approve',
+            visibleWhen: { contentStatus: 'PENDING' },
+          },
+          {
+            id: 'queue-publish',
+            endpoint: 'POST /api/contents/{id}/publish',
+            visibleWhen: { contentStatus: 'APPROVED', accountStatus: 'ACTIVE' },
+          },
+          {
+            id: 'monitor',
+            endpoint: 'GET /api/publish-status/content/{contentId}',
+            realtime: 'GET /api/publish/progress',
+          },
+        ],
+      },
+      accountCookieLogin: {
+        title: '账号 Cookie 与登录态维护',
+        steps: [
+          { id: 'create-account', endpoint: 'POST /api/accounts' },
+          { id: 'import-cookies', endpoint: 'POST /api/accounts/{id}/cookies' },
+          { id: 'check-login', endpoint: 'POST /api/accounts/{id}/cookies/check-login' },
+          { id: 'read-callback-state', endpoint: 'GET /api/accounts/{id}' },
+        ],
+      },
+      publishFailureRecovery: {
+        title: '发布失败恢复',
+        steps: [
+          { id: 'open-history', endpoint: 'GET /api/publish-status/account/all' },
+          {
+            id: 'retry-failed-log',
+            endpoint: 'POST /api/publish-status/{id}/retry',
+            visibleWhen: { publishStatus: 'FAILED' },
+          },
+          {
+            id: 'manual-compensation',
+            endpoint: 'POST /api/contents/{id}/move-to-published',
+            danger: true,
+          },
+        ],
+      },
+    },
+    entityStates: {
+      content: {
+        field: 'Content.status',
+        transitions: {
+          PENDING: { allowedActions: ['approve', 'reject'], next: ['APPROVED', 'REJECTED'] },
+          APPROVED: { allowedActions: ['publish'], next: ['PUBLISHING'] },
+          PUBLISHING: { allowedActions: ['monitor'], next: ['PUBLISHED', 'FAILED'] },
+          PUBLISHED: { allowedActions: ['viewPublishedUrl'], terminal: true },
+          FAILED: { allowedActions: ['inspectError', 'retryFromPublishLog'], terminal: false },
+          REJECTED: { allowedActions: ['viewReviewNote'], terminal: true },
+        },
+      },
+      account: {
+        field: 'Account.status + Account.loginStatus',
+        publishableWhen: { status: 'ACTIVE', loginStatus: ['LOGGED_IN', 'UNKNOWN'] },
+        warningWhen: { cookieExpiryWarning: true },
+      },
+      publishLog: {
+        field: 'PublishLog.status',
+        retryableWhen: 'FAILED',
+        successFields: ['publishedUrl', 'completedAt', 'callbackPayload'],
+        failureFields: ['errorMessage', 'errorCode', 'callbackPayload'],
+      },
+    },
+    formContracts: {
+      publishApprovedContent: {
+        endpoint: 'POST /api/contents/{id}/publish',
+        fields: {
+          platform: { component: 'select', optionsFrom: 'Platform enum', required: true },
+          accountId: {
+            component: 'account-select',
+            optionsEndpoint: 'GET /api/accounts?platform={platform}&status=ACTIVE',
+            requiredInApi: false,
+            requiredInUi: true,
+            rationale:
+              'Backend has a fallback, but UI should force explicit account selection to avoid accidental publishing.',
+          },
+        },
+      },
+      reviewContent: {
+        endpoints: ['POST /api/contents/{id}/approve', 'POST /api/contents/{id}/reject'],
+        fields: {
+          reviewedBy: { component: 'hidden-or-text', requiredInUi: false },
+          note: { component: 'textarea', requiredInUi: false },
+        },
+      },
+      createAccount: {
+        endpoint: 'POST /api/accounts',
+        fields: {
+          name: { component: 'text', required: true },
+          platform: { component: 'select', optionsFrom: 'Platform enum', required: true },
+          groupId: { component: 'select-or-empty', required: false },
+          username: { component: 'text', required: false },
+          remark: { component: 'textarea', required: false },
+        },
+      },
+      importCookies: {
+        endpoint: 'POST /api/accounts/{id}/cookies',
+        fields: {
+          cookies: { component: 'json-editor-or-file-drop', required: true },
+          password: { component: 'password', required: false },
+        },
+      },
+    },
+    realtime: {
+      sse: {
+        endpoint: 'GET /api/publish/progress',
+        useFor: ['publish progress timeline', 'auth qr_ready/status progress'],
+        reconnect: true,
+      },
+      websocket: {
+        endpoint: 'WS /ws',
+        useFor: ['content_updated', 'publish_update', 'media_action_done', 'media_action_failed'],
+        heartbeat: { send: { type: 'ping' }, receive: 'pong' },
+      },
+    },
+    auth: {
+      production: {
+        header: 'Authorization: Bearer <API_AUTH_TOKEN>',
+        publicRoutes: ['/', '/health', '/ready'],
+        webhookRoutesUseDifferentToken: true,
+        docsExposureFlag: 'EXPOSE_DOCS',
+      },
+    },
+    contentSource: {
+      baseDirEnv: 'CONTENT_DIR',
+      baseDirConfigurable: true,
+      fixedSubdirectories: ['inbox', 'approved', 'published'],
+      inboxPurpose:
+        'Frontend/user agents place draft content under CONTENT_DIR/inbox, then trigger scan-inbox.',
+    },
+    endpointPriority: {
+      primaryMvp: [
+        'GET /api/contents',
+        'GET /api/contents/{id}',
+        'POST /api/contents/scan-inbox',
+        'POST /api/contents/{id}/approve',
+        'POST /api/contents/{id}/reject',
+        'POST /api/contents/{id}/publish',
+        'GET /api/accounts',
+        'POST /api/accounts',
+        'POST /api/accounts/{id}/cookies',
+        'POST /api/accounts/{id}/cookies/check-login',
+        'GET /api/publish-status/stats',
+        'GET /api/publish-status/account/all',
+        'GET /api/publish/progress',
+      ],
+      legacyOptional: ['/api/media/*', '/api/media/actions/*'],
+      integrationOnly: ['/api/webhook/*'],
+    },
   },
   components: {
     securitySchemes: {
@@ -1108,6 +1382,7 @@ export const openApiDocument = {
         },
         'x-ui': {
           view: 'content-detail',
+          dataDependencies: ['GET /api/accounts', 'GET /api/publish-status/content/{contentId}'],
           sections: [
             'preview-gallery',
             'metadata',
@@ -1260,6 +1535,10 @@ export const openApiDocument = {
           ],
           filters: ['platform', 'status'],
           primaryActions: ['createAccount', 'openDetail', 'importCookies'],
+          emptyState: {
+            title: '暂无发布账号',
+            nextActions: ['createAccount', 'importCookies'],
+          },
         },
       },
       post: {
