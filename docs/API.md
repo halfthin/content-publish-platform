@@ -1,6 +1,6 @@
 # API 文档
 
-> 更新时间：2026-05-17  
+> 更新时间：2026-05-19  
 > 范围：`apps/server/src/routes/*`、`apps/server/src/index.ts` 当前后端路由。  
 > 默认 Base URL：`http://localhost:50000`（以 `PORT` 环境变量为准；部分历史文档仍可能写 `3000`）。  
 > Swagger UI：`/docs`；OpenAPI JSON：`/docs/openapi.json`。
@@ -67,11 +67,22 @@
 - `bilibili`
 - `wechat`
 
-### 认证与回调 Token
+### 生产鉴权
 
-- 普通管理 API 当前没有统一鉴权中间件。
-- Gateway/Webhook 回调使用 Bearer Token：`Authorization: Bearer <CPP_FROM_GATEWAY_TOKEN>`。
-- Cookie 导入支持可选 `password`；未传时使用 `COOKIE_ENCRYPTION_KEY`。
+生产环境中，除 `/health`、`/ready` 和 `/api/webhook/*` 外，管理 API 默认需要：
+
+```http
+Authorization: Bearer <API_AUTH_TOKEN>
+```
+
+Webhook 回调使用独立 Bearer Token，不使用管理 API token：
+
+```http
+Authorization: Bearer <CPP_FROM_GATEWAY_TOKEN>
+```
+
+`/docs` 与 `/docs/openapi.json` 是否暴露由 `EXPOSE_DOCS` 控制；生产建议设置 `EXPOSE_DOCS=false`。
+Cookie 导入支持可选 `password`；未传时使用 `COOKIE_ENCRYPTION_KEY`。
 
 ---
 
@@ -93,14 +104,34 @@
 
 ### GET `/health`
 
-返回服务健康状态。
+返回服务健康状态，用作 liveness 检查。
 
 **响应示例**
 
 ```json
 {
   "status": "ok",
-  "timestamp": "2026-05-14T00:00:00.000Z"
+  "timestamp": "2026-05-19T00:00:00.000Z"
+}
+```
+
+### GET `/ready`
+
+返回 readiness 检查结果。服务会聚合环境、数据库、Redis、内容目录和 Gateway 等依赖状态；任一必需检查失败时返回 `503`，用于部署/负载均衡流量门禁。
+
+**响应示例**
+
+```json
+{
+  "status": "ready",
+  "timestamp": "2026-05-19T00:00:00.000Z",
+  "checks": {
+    "environment": { "status": "ok", "message": "environment valid" },
+    "database": { "status": "ok", "message": "database reachable" },
+    "redis": { "status": "ok", "message": "redis reachable" },
+    "contentDir": { "status": "ok", "message": "content directory writable" },
+    "gateway": { "status": "ok", "message": "gateway configured" }
+  }
 }
 ```
 
@@ -884,24 +915,37 @@ Authorization: Bearer <MEDIA_ACTION_FROM_GATEWAY_TOKEN 或 CPP_FROM_GATEWAY_TOKE
 
 ## 12. 常用 Smoke Test
 
+生产管理 API 需要 `API_AUTH_TOKEN`；以下命令默认不触发第三方发布。
+
 ```bash
+export API_BASE_URL=http://localhost:50000
+export API_AUTH_TOKEN=<token>
+
 # 健康检查
-curl http://localhost:50000/health
+curl "$API_BASE_URL/health"
+curl "$API_BASE_URL/ready"
 
 # 账号列表
-curl http://localhost:50000/api/accounts
+curl -H "Authorization: Bearer $API_AUTH_TOKEN" "$API_BASE_URL/api/accounts"
 
 # 内容列表
-curl http://localhost:50000/api/contents
+curl -H "Authorization: Bearer $API_AUTH_TOKEN" "$API_BASE_URL/api/contents"
 
 # 发布统计
-curl http://localhost:50000/api/publish-status/stats
+curl -H "Authorization: Bearer $API_AUTH_TOKEN" "$API_BASE_URL/api/publish-status/stats"
 
 # SSE 进度流（保持连接）
-curl -N http://localhost:50000/api/publish/progress
+curl -N -H "Authorization: Bearer $API_AUTH_TOKEN" "$API_BASE_URL/api/publish/progress"
 
 # XHS MCP 登录状态（需要 XHS_MCP_INSTANCES 且服务已启动）
-curl 'http://localhost:50000/api/xhs/login/status?instance=xhs-1'
+curl -H "Authorization: Bearer $API_AUTH_TOKEN" \
+  "$API_BASE_URL/api/xhs/login/status?instance=xhs-1"
+```
+
+部署后可运行脚本化 smoke：
+
+```bash
+API_BASE_URL=http://localhost:50000 API_AUTH_TOKEN=<token> EXPOSE_DOCS=false bun run smoke:api
 ```
 
 ---
@@ -910,35 +954,44 @@ curl 'http://localhost:50000/api/xhs/login/status?instance=xhs-1'
 
 - `CONTENT_DIR` 可配置，但 inbox/approved/published 子目录名目前是约定固定的。
 - `/api/publish` 与 `/api/xhs/publish*` 当前会入队到现有 BullMQ 发布队列；完整发布依赖 Redis、Postgres、有效账号、有效 Cookie 或 xhs-mcp 登录态。
+- `/api/media/*` 与 `/api/media/actions/*` 是 legacy/optional 素材工作流，不是当前 `service-api` 主发布路径。
 - `PublishJobData` 与新 `PublishJobPayload` 暂时并存，后续需要统一类型边界。
 - `XHS_MCP_INSTANCES.accountName` 已在配置类型中支持，但当前 publisher 实例注册 key 仍主要使用 `name`。
 - `GET /api/xhs/login/*` 与 `POST /api/xhs/login/refresh` 需要先配置并启动 `XHS_MCP_INSTANCES` 对应实例；未配置时应返回 `404`，不应触发真实外部请求。
 - 真实外部发布会对第三方平台产生副作用，合并前建议只做测试账号/草稿内容验证。
 
-## 14. 当前验证状态（2026-05-14）
+## 14. 当前验证状态（2026-05-19）
 
-已完成：
+已完成并同步到当前分支的默认门禁：
 
-- `cd apps/server && bun run check`：通过（Biome 检查并格式化）。
-- `cd apps/server && bun test`：通过，包含发布路由、XHS 路由和队列映射回归测试。
-- `bun run build`：通过（Vite 仅有 chunk-size warning）。
-- 本地非破坏性 smoke：`/health`、`/api/accounts`、`/api/contents`、`/api/publish-status/stats` 均返回 `200`。
+- `cd apps/server && bun run check`：通过（Biome 检查）。
+- `cd apps/server && bun test`：通过，默认测试不触发真实第三方发布。
+- `cd apps/server && bun test src/config/env.test.ts src/middleware/auth.test.ts src/routes/health.test.ts src/routes/publish-flow.test.ts src/routes/api-doc.test.ts`：生产就绪目标测试通过。
+- `bun test tests/real-xhs-smoke.test.ts`：默认跳过真实 XHS smoke。
+- `RUN_REAL_XHS_TESTS=true` 且缺少真实发布配置时，`tests/real-xhs-smoke.test.ts` 会失败，证明真实发布不会静默运行。
 
-真实 XHS MCP / Gateway smoke 当前阻塞：
+真实 XHS MCP / Gateway smoke 仍需显式授权和测试账号：
 
-- `apps/server/.env` 中 `XHS_MCP_INSTANCES` 未配置。
-- 探测端口显示 `OPENCLAW_GATEWAY_URL=http://localhost:18789` 未监听，常见 XHS MCP 端口 `18060`、`5601` 未监听。
-- 因此当前只验证到本地 API、队列入参映射和缺实例错误路径；未执行会产生第三方平台副作用的真实发布。
+- 必须设置 `RUN_REAL_XHS_TESTS=true`。
+- 必须配置 `XHS_MCP_INSTANCES`、`API_BASE_URL`、`API_AUTH_TOKEN`。
+- 只能使用测试账号和安全测试内容。
+- 默认 CI / 默认本地测试不得启用真实第三方发布。
 
-解除阻塞后建议使用测试账号配置：
+示例配置：
 
 ```bash
-XHS_MCP_INSTANCES='[{"name":"xhs-1","url":"http://<mcp-host>:<port>","accountName":"<test-account>"}]'
+RUN_REAL_XHS_TESTS=true \
+XHS_MCP_INSTANCES='[{"name":"xhs-1","url":"http://<mcp-host>:<port>","accountName":"<test-account>"}]' \
+API_BASE_URL=http://localhost:50000 \
+API_AUTH_TOKEN=<token> \
+bun test tests/real-xhs-smoke.test.ts
 ```
 
-然后依次验证：
+建议真实验证顺序：
 
 1. `GET /api/xhs/login/status?instance=xhs-1`
 2. `GET /api/xhs/login/qrcode?instance=xhs-1`
 3. `GET /api/publish/progress` SSE 连接事件
-4. 仅使用测试账号/安全素材验证 enqueue；真实发布需单独授权。
+4. 使用测试账号和安全素材验证 `POST /api/contents/:id/publish` 到 webhook 回调闭环。
+
+最终上线状态以 `docs/PRODUCTION_READINESS.md` 中的 checklist 和最近验证日期为准。

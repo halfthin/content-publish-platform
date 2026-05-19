@@ -348,6 +348,7 @@ export const openApiDocument = {
       '- Production management APIs under `/api/*` require `Authorization: Bearer <API_AUTH_TOKEN>` unless the route is a webhook callback.',
       '- Webhook callbacks use independent gateway callback tokens such as `CPP_FROM_GATEWAY_TOKEN` and are not authorized by `API_AUTH_TOKEN`.',
       '- `/docs` and `/docs/openapi.json` may be disabled in production when `EXPOSE_DOCS=false`.',
+      '- Real XHS publishing validation is gated outside the API contract by `RUN_REAL_XHS_TESTS=true`; default tests must not trigger third-party publishing side effects.',
       '',
       'Narrative documentation lives in docs/API.md and is kept synchronized by apps/server/src/routes/api-doc.test.ts.',
     ].join('\n'),
