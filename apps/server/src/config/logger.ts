@@ -62,52 +62,84 @@ const debugFileSink = (record: LogRecord) => {
   }
 };
 
+// 确保 publish 日志子目录存在
+mkdirSync(join(LOG_DIR, 'publish'), { recursive: true });
+
+const sinks: Record<string, (record: LogRecord) => void> = {
+  console: consoleSink,
+  verifyFile: verifyFileSink,
+  requestFile: requestFileSink,
+  debugFile: debugFileSink,
+};
+
+const loggers: Array<{
+  category: string[];
+  level: string;
+  sinks: string[];
+}> = [
+  // 根 logger - info 级别，不包含 request
+  {
+    category: ['app'],
+    level: 'info',
+    sinks: ['console'],
+  },
+  // cookie-verify - debug + console + file
+  {
+    category: ['app', 'cookie-verify'],
+    level: 'debug',
+    sinks: ['console', 'verifyFile'],
+  },
+  // request - 只输出到文件，不输出到控制台
+  {
+    category: ['app', 'request'],
+    level: 'debug',
+    sinks: ['requestFile'],
+  },
+  // media - 只输出到 debug 文件
+  {
+    category: ['app', 'media'],
+    level: 'debug',
+    sinks: ['debugFile'],
+  },
+  // file-watcher - debug + console
+  {
+    category: ['app', 'file-watcher'],
+    level: 'debug',
+    sinks: ['console'],
+  },
+  // content-service - debug + console
+  {
+    category: ['app', 'content-service'],
+    level: 'debug',
+    sinks: ['console'],
+  },
+];
+
+// Per-platform publish log sinks
+const PUBLISH_PLATFORMS = ['xiaohongshu', 'weibo', 'douyin', 'bilibili', 'wechat'];
+
+for (const platform of PUBLISH_PLATFORMS) {
+  const PUBLISH_LOG_FILE = join(LOG_DIR, 'publish', `${platform}.log`);
+  const sinkName = `publishFile:${platform}`;
+  sinks[sinkName] = (record: LogRecord) => {
+    const formatted = jsonLinesFormatter(record);
+    try {
+      appendFileSync(PUBLISH_LOG_FILE, `${formatted}\n`);
+    } catch (err) {
+      console.error(`Failed to write publish log (${platform}):`, err);
+    }
+  };
+  loggers.push({
+    category: ['app', 'publish', platform],
+    level: 'debug',
+    sinks: ['console', sinkName],
+  });
+}
+
 // 配置日志
 await configure({
-  sinks: {
-    console: consoleSink,
-    verifyFile: verifyFileSink,
-    requestFile: requestFileSink,
-    debugFile: debugFileSink,
-  },
-  loggers: [
-    // 根 logger - info 级别，不包含 request
-    {
-      category: ['app'],
-      level: 'info',
-      sinks: ['console'],
-    },
-    // cookie-verify - debug + console + file
-    {
-      category: ['app', 'cookie-verify'],
-      level: 'debug',
-      sinks: ['console', 'verifyFile'],
-    },
-    // request - 只输出到文件，不输出到控制台
-    {
-      category: ['app', 'request'],
-      level: 'debug',
-      sinks: ['requestFile'],
-    },
-    // media - 只输出到 debug 文件
-    {
-      category: ['app', 'media'],
-      level: 'debug',
-      sinks: ['debugFile'],
-    },
-    // file-watcher - debug + console
-    {
-      category: ['app', 'file-watcher'],
-      level: 'debug',
-      sinks: ['console'],
-    },
-    // content-service - debug + console
-    {
-      category: ['app', 'content-service'],
-      level: 'debug',
-      sinks: ['console'],
-    },
-  ],
+  sinks,
+  loggers,
 });
 
 export const logger = getLogger(['app']);
