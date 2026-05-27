@@ -1,5 +1,31 @@
 # Repository Guidelines
 
+## Behavioral Guidelines
+
+### 1. Think Before Coding
+State assumptions explicitly. If uncertain, ask. When multiple interpretations exist, present them — don't pick silently. If a simpler approach exists, say so. If something is unclear, stop. Name what's confusing. Ask.
+
+### 2. Simplicity First
+Minimum code that solves the problem. Nothing speculative. No features beyond what was asked. No abstractions for single-use code. If you write 200 lines and it could be 50, rewrite it.
+
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+### 3. Surgical Changes
+Touch only what you must. Don't "improve" adjacent code, comments, or formatting. Don't refactor things that aren't broken. Match existing style. If your changes create orphans (unused imports/variables/functions), clean them up. Don't touch pre-existing dead code.
+
+The test: Every changed line should trace directly to the requirement.
+
+### 4. Goal-Driven Execution
+Transform tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+
+For multi-step tasks, state a brief plan before implementing:
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+```
+
 ## Project Structure & Module Organization
 `apps/server` is the Bun/Elysia API. Keep production code in `apps/server/src`, Prisma schema changes in `apps/server/prisma`, and backend tests close to the code as `*.test.ts`. `apps/web` is the Vue 3/Vite frontend; organize UI code under `src/views`, `components`, `api`, `stores`, `utils`, and `websocket`. `content/{inbox,approved,published}` stores content files used by the publishing workflow. Use `tests/` for broader functional, performance, and regression scripts; keep setup and reports there. Operational docs live in `docs/`, and local container files live in `docker/`.
 
