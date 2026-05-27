@@ -69,7 +69,7 @@ const defaultChecks: Record<string, ReadinessCheck> = {
 export function setupHealthRoutes(options: HealthRouteOptions = {}) {
   const checks = options.checks || defaultChecks;
 
-  return new Elysia()
+  return new Elysia({ prefix: '/api' })
     .get('/health', () => ({ status: 'ok', timestamp: new Date().toISOString() }))
     .get('/ready', async ({ set }) => {
       const entries = await Promise.all(

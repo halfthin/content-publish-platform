@@ -41,6 +41,11 @@ export function setupRoutes() {
         version: '1.0.0',
         status: 'running',
       }))
+      .get('/api', () => ({
+        name: 'Content Publish Platform API',
+        version: '1.0.0',
+        status: 'running',
+      }))
       .use(setupHealthRoutes())
       // Swagger/OpenAPI 文档
       .use(setupApiDocRoutes())

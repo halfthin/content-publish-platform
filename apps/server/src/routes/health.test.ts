@@ -6,7 +6,7 @@ describe('health routes', () => {
   it('GET /health returns liveness status', async () => {
     const app = new Elysia().use(setupHealthRoutes());
 
-    const res = await app.handle(new Request('http://localhost/health'));
+    const res = await app.handle(new Request('http://localhost/api/health'));
     const data = await res.json();
 
     expect(res.status).toBe(200);
@@ -27,7 +27,7 @@ describe('health routes', () => {
       })
     );
 
-    const res = await app.handle(new Request('http://localhost/ready'));
+    const res = await app.handle(new Request('http://localhost/api/ready'));
     const data = await res.json();
 
     expect(res.status).toBe(200);
@@ -56,7 +56,7 @@ describe('health routes', () => {
       })
     );
 
-    const res = await app.handle(new Request('http://localhost/ready'));
+    const res = await app.handle(new Request('http://localhost/api/ready'));
     const data = await res.json();
 
     expect(res.status).toBe(503);
