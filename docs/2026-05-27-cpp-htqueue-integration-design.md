@@ -1,37 +1,38 @@
 # cpp 集成 ht-queue 设计文档
 
-> 将 content-publish-platform（cpp）的队列管理迁移到独立的 ht-queue 服务，
-> 采用与 take-a-picture（shoot）项目相同的集成模式。
+> 将 content-publish-platform（cpp）的队列管理迁移到独立的 ht-queue 服务。
 
 ## 背景
 
 当前 cpp 项目直接使用 BullMQ 管理发布队列（publish-queue），混合了队列基础设施
-与业务逻辑。ht-queue 是独立的队列管理服务，通过 HTTP API 实现队列注册、任务入队
-和回调调度。
+与业务逻辑。ht-queue 是统一的队列管理服务，提供队列注册、任务入队、回调调度，
+以及 Task 统一管理（进度/结果/SSE）。
 
 ## 架构概览
 
 ```
-POST /api/publish
-       │
-       ▼
-  queue-client ──POST──► ht-queue          Queue: cpp-xhs
-       │                   │                    │
-       │              BullMQ + Redis             │ callback
-       │                   │                    │
-       │                   ▼                    ▼
-       │           /_internal/queues/xhs
-       │                   │
-       │            publish-task-store
-       │                   │
-       │              Prisma + SSE
-       │                   │
-       │        ┌──────────┴──────────┐
-       │        │                     │
-       │   progress-emitter     logtape (按平台)
-       │        │
-       │  SSE → /api/publish/:id/stream
+UI / 前端
+  │
+  │ POST /api/publish → 202 { taskId, streamUrl, statusUrl }
+  │ GET  /api/publish/:id
+  ▼
+cpp 服务
+  │
+  ├── queue-client ──POST──► ht-queue /queues/cpp-xhs/jobs   入队
+  │                              │
+  │                              ├─ BullMQ ── callback ──► /_internal/queues/xhs
+  │                              │
+  │                              ├─ Task API ── POST /api/tasks/:id/progress
+  │                              │               POST /api/tasks/:id/complete
+  │                              │               POST /api/tasks/:id/fail
+  │                              │
+  │                              └─ SSE ──── GET /api/tasks/:id/stream
+  │                                            ↑
+  └── EventSource ──────────────────────────────┘ 前端直连 ht-queue SSE
 ```
+
+**关键变化：** Task 记录、进度事件、SSE 流全部由 ht-queue 统一管理，
+cpp 不再需要自建 Prisma Task 模型和 SSE 服务。
 
 ## 1. 队列注册
 
@@ -80,7 +81,6 @@ bootstrap()
 新建 `services/queue-client.ts`，提供入队函数：
 
 ```typescript
-// 发布任务入队
 async function enqueuePublish(
   platform: string,       // xiaohongshu | weibo | douyin | ...
   jobData: PublishJobData,
@@ -96,7 +96,11 @@ enqueuePublish(platform, jobData)
   → 映射 queueName: "cpp-" + platform 简称 (xiaohongshu → "xhs")
   → fetch POST {HT_QUEUE_BASE}/queues/{queueName}/jobs
      headers: { X-Project-Name: cpp }
-     body: { name: "publish", data: { taskId, ...jobData }, options: { jobId: taskId } }
+     body: {
+       name: "publish",
+       data: { taskId, ...jobData },
+       options: { jobId: taskId }
+     }
   → 403 → 重新注册 → 重试入队
   → return { jobId, taskId }
 ```
@@ -110,13 +114,6 @@ enqueuePublish(platform, jobData)
 | douyin | cpp-douyin | `/_internal/queues/douyin` |
 | bilibili | cpp-bilibili | `/_internal/queues/bilibili` |
 | wechat | cpp-wechat | `/_internal/queues/wechat` |
-
-### 环境变量
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `HT_QUEUE_BASE_URL` | http://100.64.0.6:44200 | ht-queue 服务地址 |
-| `API_BASE_URL` | http://localhost:50000 | 本服务外网地址（拼接 callback URL） |
 
 ## 3. 回调端点
 
@@ -148,22 +145,38 @@ enqueuePublish(platform, jobData)
 
 ```
 1. 从 data 提取 contentId、accountId、taskId 等
-2. 创建 PublishTask 记录（若不存在）
-3. 根据 PUBLISH_MODE 选择发布方式：
+2. 开始发布，过程中通过 HTTP 向 ht-queue 报告进度:
+   fetch POST {HT_QUEUE_BASE}/api/tasks/{taskId}/progress
+   headers: { X-Project-Name: cpp }
+   body: { stage, progress, message }
+3. 根据 PUBLISH_MODE 选择发布方式:
    a) Gateway 模式 → 调用 GatewayService.publish()
    b) Local 模式   → 调用对应的 Publisher（xiaohongshu.ts）
-4. 发布过程中的关键阶段 emitProgress():
-   - "decrypting-cookies"   → 解密进度 5%
-   - "loading-browser"      → 浏览器初始化 10%
-   - "checking-login"       → 登录验证 20%
-   - "preparing-media"      → 素材准备 30-60%
-   - "publishing"           → 发布中 70-90%
-   - "saving-cookies"       → 保存 Cookie 95%
-5. 完成时 emitComplete() 带 process-report
-6. 返回 { success: true }
+4. 关键进度阶段:
+   - "decrypting-cookies"   → progress: 5
+   - "loading-browser"      → progress: 10
+   - "checking-login"       → progress: 20
+   - "preparing-media"      → progress: 30-60
+   - "publishing"           → progress: 70-90
+   - "saving-cookies"       → progress: 95
+5. 完成时向 ht-queue 发送 process-report:
+   fetch POST {HT_QUEUE_BASE}/api/tasks/{taskId}/complete
+   headers: { X-Project-Name: cpp }
+   body: { result: { platform, publishedUrl, duration, ... } }
+6. 返回 { success: true } 给 ht-queue
 ```
 
-process-report 结构（存入 PublishTask.result）：
+如果发布失败：
+
+```
+fetch POST {HT_QUEUE_BASE}/api/tasks/{taskId}/fail
+headers: { X-Project-Name: cpp }
+body: { code: "...", message: "..." }
+```
+
+回调 handler 中异常也要兜底调 fail（try/catch 最外层）。
+
+### 3.3 process-report 结构
 
 ```typescript
 {
@@ -178,120 +191,36 @@ process-report 结构（存入 PublishTask.result）：
 }
 ```
 
-如果发布失败，返回 `{ success: false, error: "..." }`，ht-queue 会根据重试策略重试。
+## 4. 前端集成（SSE）
 
-## 4. Task Store + SSE
+前端通过 ht-queue 的 SSE 端点获取发布进度：
 
-### 4.1 Prisma Schema
+```javascript
+// cpp 入队后拿到 taskId
+const { taskId, streamUrl, statusUrl } = await response.json();
 
-在 cpp 数据库新增 `PublishTask` 和 `PublishProgressEvent` 模型：
+// streamUrl 指向 ht-queue
+// /api/tasks/{taskId}/stream  →  代理到 {HT_QUEUE_BASE}/api/tasks/{taskId}/stream
 
-```prisma
-model PublishTask {
-  id           String   @id
-  platform     String
-  contentId    String?
-  accountId    String?
-  status       String   @default("running")  // running | done | error
-  request      Json
-  result       Json?
-  errorCode    String?
-  errorMessage String?
-  errorData    Json?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  finishedAt   DateTime?
+const eventSource = new EventSource(`/api/queue-proxy/tasks/${taskId}/stream`);
 
-  progress PublishProgressEvent[]
+eventSource.addEventListener('progress', (e) => {
+  const data = JSON.parse(e.data);
+  updateProgressUI(data.stage, data.progress, data.message);
+});
 
-  @@index([status, createdAt])
-  @@index([platform, createdAt])
-  @@map("publish_tasks")
-}
+eventSource.addEventListener('complete', (e) => {
+  const data = JSON.parse(e.data);
+  showResult(data.result);
+});
 
-model PublishProgressEvent {
-  id        String   @id @default(cuid())
-  taskId    String
-  event     String   @default("progress")
-  stage     String
-  progress  Float
-  message   String
-  payload   Json?
-  createdAt DateTime @default(now())
-
-  task PublishTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
-
-  @@index([taskId, createdAt])
-  @@map("publish_progress_events")
-}
+eventSource.addEventListener('error', (e) => {
+  const data = JSON.parse(e.data);
+  showError(data.code, data.message);
+});
 ```
 
-### 4.2 Publish Task Store
-
-`services/publish-task-store.ts` — 封装 Prisma 操作，同 take-a-picture 的 task-store.ts 模式：
-
-| 函数 | 说明 |
-|------|------|
-| `createTask(input)` | 创建 publish task 记录 |
-| `getTask(taskId)` | 获取 task + progress |
-| `addProgress(taskId, event, stage, progress, message, payload?)` | 追加进度 |
-| `completeTask(taskId, result?)` | 标记完成，存 process-report |
-| `failTask(taskId, code, message, data?)` | 标记失败 |
-| `listTasks(limit)` | 最近任务列表 |
-
-### 4.3 Progress Emitter
-
-`services/publish-progress-emitter.ts` — EventEmitter 封装：
-
-```typescript
-// 发布进度事件
-emitProgress(taskId, { stage, progress, message })
-  → 写入 Prisma + bus.emit(`task:${taskId}`, { type: "progress", ... })
-
-// 完成事件
-emitComplete(taskId, result)
-  → completeTask() + bus.emit(`task:${taskId}`, { type: "complete", ... })
-
-// 失败事件
-emitError(taskId, code, message)
-  → failTask() + bus.emit(`task:${taskId}`, { type: "error", ... })
-
-// 前端订阅
-onTaskEvent(taskId, callback) → unsubscribe()
-```
-
-### 4.4 SSE 端点
-
-`POST /api/publish` 改返回 202 + streaming 响应格式：
-
-```json
-{
-  "taskId": "xxx",
-  "streamUrl": "/api/publish/{taskId}/stream",
-  "statusUrl": "/api/publish/{taskId}"
-}
-```
-
-新增 `routes/publish-task.ts`：
-
-| 端点 | 方法 | 说明 |
-|------|------|------|
-| `/api/publish/:id` | GET | 任务详情 + progress + result |
-| `/api/publish/:id/stream` | GET | SSE 实时进度流 |
-| `/api/publish/task/list` | GET | 最近任务列表 |
-
-SSE 流格式同 take-a-picture：
-
-```
-event: progress
-data: {"taskId":"...","stage":"publishing","progress":70,"message":"正在发布到小红书..."}
-
-event: complete
-data: {"taskId":"...","result":{"platform":"xiaohongshu","publishedUrl":"...","duration":45000}}
-
-event: error
-data: {"taskId":"...","code":"COOKIE_EXPIRED","message":"Cookie 已过期"}
-```
+Vite 代理配置加一条路由，把 `/api/queue-proxy/tasks/` 转发到 ht-queue。
 
 ## 5. 按平台日志
 
@@ -330,13 +259,6 @@ log.info("Cookies loaded successfully");
 log.warn("Login check detected stale session, will retry...");
 log.error("Publish failed", { error, attempt });
 ```
-
-### 环境变量
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `LOG_DIR` | ./logs | 日志根目录 |
-| `LOG_LEVEL` | debug | 控制台日志级别 |
 
 ## 6. Bootstrap 与 Graceful Shutdown
 
@@ -379,10 +301,7 @@ getSseManager().shutdown()            → [删除]
 | 文件 | 说明 |
 |------|------|
 | `apps/server/src/services/queue-client.ts` | ht-queue 注册 + 入队客户端 |
-| `apps/server/src/services/publish-task-store.ts` | PublishTask Prisma 操作封装 |
-| `apps/server/src/services/publish-progress-emitter.ts` | 进度事件总线 |
-| `apps/server/src/routes/queues/xhs.callback.ts` | 小红书发布回调 handler |
-| `apps/server/src/routes/publish-task.ts` | SSE + task 查询端点 |
+| `apps/server/src/routes/queues/xhs.callback.ts` | 小红书发布回调 handler（含进度 HTTP 上报） |
 | `apps/server/src/config/logging.ts` | logtape 多文件日志配置 |
 
 ### 修改文件
@@ -390,10 +309,10 @@ getSseManager().shutdown()            → [删除]
 | 文件 | 变更 |
 |------|------|
 | `apps/server/src/index.ts` | bootstrap/shutdown 适配 |
-| `apps/server/src/routes/publish.ts` | 改为返回 202 + taskId/streamUrl |
-| `apps/server/src/routes/index.ts` | 注册新路由 |
-| `apps/server/prisma/schema.prisma` | 新增 PublishTask/PublishProgressEvent 模型 |
+| `apps/server/src/routes/publish.ts` | 改为返回 202 + taskId/streamUrl/statusUrl |
+| `apps/server/src/routes/index.ts` | 注册回调路由 |
 | `apps/server/package.json` | 移除 bullmq/ioredis，确保 logtape 依赖 |
+| `apps/web/vite.config.ts` | 代理 `/api/queue-proxy/tasks/` → ht-queue |
 
 ### 删除内容
 
@@ -402,6 +321,7 @@ getSseManager().shutdown()            → [删除]
 | `queues/publish-queue.ts` | 整个文件删除。`PublishJobData` 等类型定义迁移到 `queue-client.ts` |
 | `queues/media-action-queue.ts` | 整个文件删除 |
 | 所有 `services/media-action-*.ts` | media-action-dispatcher、sse-manager、timeout-service 等全部删除 |
+| 所有 `services/openclaw-callback-*.ts` | 检查是否 media-action 相关，是则删除 |
 | `routes/media-actions.ts` | 素材动作路由删除 |
 | `routes/media.ts` | 检查是否 media-action 相关，是则删除 |
 | `config/media-actions.ts` | 删除 |
@@ -415,14 +335,5 @@ getSseManager().shutdown()            → [删除]
 | ht-queue 注册失败 | 记录警告，不阻止启动。回调端点仍就绪 |
 | ht-queue 入队失败 | 抛出异常，调用方（路由 handler）返回 5xx |
 | 回调时 ht-queue 断开 | 回调请求由 ht-queue worker 驱动，断开会触发重试 |
-| 发布过程中出错 | emitError() → SSE 通知前端 → failTask() → ht-queue 重试 |
-
-## 9. 与 take-a-picture 的关键差异
-
-| 方面 | take-a-picture (shoot) | cpp |
-|------|----------------------|-----|
-| 队列 | 1 个 (shoot) | 按平台拆分 (cpp-xhs, cpp-weibo...) |
-| 回调端点 | 统一 `/_internal/process-job` | 按平台独立 `/_internal/queues/{platform}` |
-| Task Store | ShootTask (独立 schema) | PublishTask (项目自身 schema) |
-| 日志 | 单文件 | 按平台多文件 |
-| 发布模式 | 仅 Gateway | Gateway + Local 双模式 |
+| 发布过程中出错 | try/catch 兜底 → fetch fail ht-queue → 返回 { success: false } |
+| 进度上报失败 | 记录警告，不中断发布流程 |
