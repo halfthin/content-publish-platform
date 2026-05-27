@@ -44,12 +44,12 @@
 - `workflows.publishFailureRecovery`：发布失败查看、重试和人工补偿入口。
 - `entityStates`：`Content.status`、`Account.status/loginStatus`、`PublishLog.status` 的按钮可见性和终态规则。
 - `formContracts`：关键表单字段、组件建议、接口必填与 UI 必填差异。
-- `realtime`：SSE `GET /api/publish/progress` 与 WebSocket `WS /ws` 的用途。
+- `realtime`：WebSocket `WS /ws` 的用途。
 - `auth.production`：生产环境 `Authorization: Bearer <API_AUTH_TOKEN>`、公开路由和 docs 暴露开关。
 - `contentSource`：`CONTENT_DIR` 可配置；`inbox`、`approved`、`published` 是固定子目录约定。
 - `endpointPriority`：MVP 主接口、legacy optional 接口和 integration-only webhook 接口分层。
 
-前端 agent 应优先实现 `pages` 中的四个 MVP 页面：`/contents`、`/accounts`、`/publish-status`、`/xhs`。`/api/media/*` 与 `/api/media/actions/*` 可作为素材工作流的可选后续模块，不应阻塞主发布 UI。
+前端 agent 应优先实现 `pages` 中的四个 MVP 页面：`/contents`、`/accounts`、`/publish-status`、`/xhs`。`/api/media/*` 可作为素材工作流的可选后续模块，不应阻塞主发布 UI。
 
 ### 响应包络
 
@@ -488,54 +488,6 @@ Base：`/api/publish`
 }
 ```
 
-### GET `/api/publish/progress`
-
-SSE 进度流，供 ht-gates 或其他客户端订阅。
-
-**Headers**
-
-- `Content-Type: text/event-stream`
-- `Cache-Control: no-cache`
-- `Connection: keep-alive`
-
-**事件示例**
-
-```text
-data: {"type":"publish","platform":"system","status":"connected"}
-
-```
-
-进度事件结构：
-
-```json
-{
-  "type": "publish",
-  "jobId": "queue-job-id",
-  "platform": "xiaohongshu",
-  "instance": "xhs-1",
-  "status": "QUEUED",
-  "progress": 0,
-  "message": "optional",
-  "data": {}
-}
-```
-
-### GET `/api/publish/:jobId`
-
-查询队列任务状态。
-
-**响应**
-
-```json
-{
-  "success": true,
-  "data": {
-    "jobId": "queue-job-id",
-    "state": "waiting"
-  }
-}
-```
-
 ---
 
 ## 7. 小红书 XHS MCP 直连 API
@@ -716,81 +668,8 @@ Base：`/api/media`
 
 ---
 
-## 9. 素材动作 API
 
-Base：`/api/media/actions`
-
-### GET `/api/media/actions/definitions`
-
-返回支持的素材动作定义。
-
-### GET `/api/media/actions?limit=20`
-
-返回最近素材动作任务。
-
-### POST `/api/media/actions`
-
-提交素材动作任务。
-
-```json
-{
-  "actionType": "image-to-image",
-  "operator": "user",
-  "assets": [
-    {
-      "rootId": "dapai",
-      "relativePath": "2026/04/09/A款/1.png"
-    }
-  ],
-  "formData": {
-    "mode": "lookbook"
-  },
-  "context": {
-    "workspaceDatePath": "2026/04/09",
-    "favoritePaths": ["2026/04/09/A款"]
-  }
-}
-```
-
-### GET `/api/media/actions/:id`
-
-查询素材动作详情。
-
-### POST `/api/media/actions/:id/retry`
-
-重试失败的素材动作。
-
-### DELETE `/api/media/actions/:id`
-
-删除素材动作；如回调保存过上传结果，会尝试删除对应上传目录。
-
-### GET `/api/media/actions/:id/uploads/*filepath`
-
-读取某个素材动作回调保存的上传结果文件。
-
-### GET `/api/media/actions/uploads/roots`
-
-返回上传结果浏览根目录。
-
-### GET `/api/media/actions/uploads/tree?provider=openclaw&path=...`
-
-返回上传结果日期树。
-
-### GET `/api/media/actions/uploads/items?provider=openclaw&path=...&recursive=true&limit=120&cursor=...`
-
-返回上传结果文件列表。
-
-### GET `/api/media/actions/uploads/:provider/*filepath`
-
-读取上传结果文件。
-
-### DELETE `/api/media/actions/uploads/:provider/*filepath`
-
-删除上传结果文件。
-
----
-
-## 10. Webhook API
+## 9. Webhook API
 
 Base：`/api/webhook`
 
@@ -843,36 +722,6 @@ Content-Type: application/json
 
 重复 `eventId` 会返回 `{ "success": true, "duplicate": true }`。
 
-### POST `/api/webhook/media-actions/:actionType/result`
-
-接收素材动作回调。支持 JSON 或 multipart；multipart 可携带结果文件，服务会保存到 `content/uploaded/openclaw/...` 并写 manifest。
-
-**Headers**
-
-```http
-Authorization: Bearer <MEDIA_ACTION_FROM_GATEWAY_TOKEN 或 CPP_FROM_GATEWAY_TOKEN>
-```
-
-**JSON Body 示例**
-
-```json
-{
-  "version": "1.0",
-  "eventId": "evt-media-001",
-  "kind": "media-action",
-  "taskId": "ext-task-001",
-  "actionType": "image-to-image",
-  "status": "success",
-  "timestamp": "2026-05-14T00:00:00.000Z",
-  "refs": {
-    "mediaActionId": "media-action-id"
-  },
-  "result": {
-    "summary": "done",
-    "outputFiles": []
-  }
-}
-```
 
 ### POST `/api/webhook/:platform/check-login-result`
 
@@ -905,7 +754,7 @@ Authorization: Bearer <MEDIA_ACTION_FROM_GATEWAY_TOKEN 或 CPP_FROM_GATEWAY_TOKE
 
 ---
 
-## 11. WebSocket
+## 10. WebSocket
 
 ### WS `/ws`
 
@@ -922,15 +771,9 @@ Authorization: Bearer <MEDIA_ACTION_FROM_GATEWAY_TOKEN 或 CPP_FROM_GATEWAY_TOKE
 ```json
 {"type":"pong","timestamp":1778767345000}
 ```
-
-素材动作终态回调在没有活跃 SSE 订阅时会广播：
-
-- `media_action_done`
-- `media_action_failed`
-
 ---
 
-## 12. 常用 Smoke Test
+## 11. 常用 Smoke Test
 
 生产管理 API 需要 `API_AUTH_TOKEN`；以下命令默认不触发第三方发布。
 
@@ -951,9 +794,6 @@ curl -H "Authorization: Bearer $API_AUTH_TOKEN" "$API_BASE_URL/api/contents"
 # 发布统计
 curl -H "Authorization: Bearer $API_AUTH_TOKEN" "$API_BASE_URL/api/publish-status/stats"
 
-# SSE 进度流（保持连接）
-curl -N -H "Authorization: Bearer $API_AUTH_TOKEN" "$API_BASE_URL/api/publish/progress"
-
 # XHS MCP 登录状态（需要 XHS_MCP_INSTANCES 且服务已启动）
 curl -H "Authorization: Bearer $API_AUTH_TOKEN" \
   "$API_BASE_URL/api/xhs/login/status?instance=xhs-1"
@@ -967,17 +807,17 @@ API_BASE_URL=http://localhost:50000 API_AUTH_TOKEN=<token> EXPOSE_DOCS=false bun
 
 ---
 
-## 13. 已知限制 / 注意事项
+## 12. 已知限制 / 注意事项
 
 - `CONTENT_DIR` 可配置，但 inbox/approved/published 子目录名目前是约定固定的。
 - `/api/publish` 与 `/api/xhs/publish*` 当前会入队到现有 BullMQ 发布队列；完整发布依赖 Redis、Postgres、有效账号、有效 Cookie 或 xhs-mcp 登录态。
-- `/api/media/*` 与 `/api/media/actions/*` 是 legacy/optional 素材工作流，不是当前 `service-api` 主发布路径。
+- `/api/media/*` 是 legacy/optional 素材工作流，不是当前 `service-api` 主发布路径。
 - `PublishJobData` 与新 `PublishJobPayload` 暂时并存，后续需要统一类型边界。
 - `XHS_MCP_INSTANCES.accountName` 已在配置类型中支持，但当前 publisher 实例注册 key 仍主要使用 `name`。
 - `GET /api/xhs/login/*` 与 `POST /api/xhs/login/refresh` 需要先配置并启动 `XHS_MCP_INSTANCES` 对应实例；未配置时应返回 `404`，不应触发真实外部请求。
 - 真实外部发布会对第三方平台产生副作用，合并前建议只做测试账号/草稿内容验证。
 
-## 14. 当前验证状态（2026-05-19）
+## 13. 当前验证状态（2026-05-19）
 
 已完成并同步到当前分支的默认门禁：
 
@@ -1008,7 +848,6 @@ bun test tests/real-xhs-smoke.test.ts
 
 1. `GET /api/xhs/login/status?instance=xhs-1`
 2. `GET /api/xhs/login/qrcode?instance=xhs-1`
-3. `GET /api/publish/progress` SSE 连接事件
-4. 使用测试账号和安全素材验证 `POST /api/contents/:id/publish` 到 webhook 回调闭环。
+3. 使用测试账号和安全素材验证 `POST /api/contents/:id/publish` 到 webhook 回调闭环。
 
 最终上线状态以 `docs/PRODUCTION_READINESS.md` 中的 checklist 和最近验证日期为准。

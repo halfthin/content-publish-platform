@@ -6,15 +6,9 @@ import { logger } from './config/logger';
 import { browserPool, initializeBrowser } from './config/playwright';
 import { disconnectPrisma } from './config/prisma';
 import { disconnectRedisClient } from './config/redis';
-import { closeMediaActionQueueExecutor, startMediaActionWorker } from './queues/media-action-queue';
-import { getPublishQueue, startAllWorkers } from './queues/publish-queue';
 import { setupRoutes } from './routes';
 import { startFileWatcher, stopFileWatcher } from './services/file-watcher.service';
-import { getSseManager } from './services/media-action-sse-manager';
-import {
-  startMediaActionTimeoutService,
-  stopMediaActionTimeoutService,
-} from './services/media-action-timeout.service';
+import { registerProject } from './services/queue-client';
 import { setupWebSocket } from './websocket/server';
 
 // Load environment variables from apps/server/.env
@@ -82,30 +76,11 @@ async function bootstrap() {
   }
 
   try {
-    // 3. 启动发布队列 Worker
-    startAllWorkers();
-    logger.info({ module: 'publish-queue' }, 'Publish queue workers started');
+    const apiBaseUrl = process.env.API_BASE_URL || 'http://localhost:50000';
+    await registerProject(apiBaseUrl);
+    logger.info({ module: 'ht-queue' }, 'Registered cpp-xhs queue to ht-queue');
   } catch (error) {
-    logger.error({ module: 'publish-queue', error }, 'Failed to start workers');
-  }
-
-  try {
-    // 4. 启动素材动作队列 Worker
-    startMediaActionWorker();
-    logger.info({ module: 'media-action-queue' }, 'Media action workers started');
-  } catch (error) {
-    logger.error({ module: 'media-action-queue', error }, 'Failed to start media action workers');
-  }
-
-  try {
-    // 5. 启动素材动作超时检查服务
-    startMediaActionTimeoutService();
-    logger.info({ module: 'media-action-timeout' }, 'Media action timeout service started');
-  } catch (error) {
-    logger.error(
-      { module: 'media-action-timeout', error },
-      'Failed to start media action timeout service'
-    );
+    logger.warn({ module: 'ht-queue', error }, 'Failed to register ht-queue (non-fatal)');
   }
 
   logger.info({ module: 'bootstrap' }, 'Bootstrap completed');
@@ -119,44 +94,6 @@ const shutdown = async (signal: string) => {
 
   // 1. 停止文件监听
   stopFileWatcher();
-
-  // 2. 关闭发布队列
-  try {
-    await getPublishQueue().close();
-    logger.info({ module: 'publish-queue' }, 'Publish queue closed');
-  } catch (error) {
-    logger.error({ module: 'publish-queue', error }, 'Error closing publish queue');
-  }
-
-  // 3. 关闭素材动作队列
-  try {
-    await closeMediaActionQueueExecutor();
-    logger.info({ module: 'media-action-queue' }, 'Media action queue closed');
-  } catch (error) {
-    logger.error({ module: 'media-action-queue', error }, 'Error closing media action queue');
-  }
-
-  // 4. 关闭素材动作超时检查服务
-  try {
-    stopMediaActionTimeoutService();
-    logger.info({ module: 'media-action-timeout' }, 'Media action timeout service stopped');
-  } catch (error) {
-    logger.error(
-      { module: 'media-action-timeout', error },
-      'Error stopping media action timeout service'
-    );
-  }
-
-  // 5. 关闭 SSE 管理器
-  try {
-    const sseManager = getSseManager();
-    if (sseManager) {
-      sseManager.shutdown();
-      logger.info({ module: 'media-action-sse-manager' }, 'SSE manager shut down');
-    }
-  } catch (error) {
-    logger.error({ module: 'media-action-sse-manager', error }, 'Error shutting down SSE manager');
-  }
 
   // 5.5 关闭 SSE 服务端
   try {

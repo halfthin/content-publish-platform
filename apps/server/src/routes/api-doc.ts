@@ -342,7 +342,7 @@ export const openApiDocument = {
       '- Use status enums to gate UI actions instead of hard-coding route availability.',
       '- File endpoints return binary data and are intended for previews/downloads, not JSON clients.',
       '- `/api/xhs/*` is the direct XHS MCP convenience surface; `/api/publish` is the generic Publisher Framework surface.',
-      '- `/api/media/*` and `/api/media/actions/*` are legacy/material-workflow APIs that are still mounted but not required for the service-only publishing MVP.',
+      '- `/api/media/*` are legacy/material-workflow APIs that are still mounted but not required for the service-only publishing MVP.',
       '',
       'Production access control:',
       '- Production management APIs under `/api/*` require `Authorization: Bearer <API_AUTH_TOKEN>` unless the route is a webhook callback.',
@@ -407,12 +407,6 @@ export const openApiDocument = {
       description:
         'Legacy media library browser. Still mounted; not required for the service-only publishing MVP unless the UI needs asset browsing.',
       'x-ui': { navLabel: '素材库', legacy: true },
-    },
-    {
-      name: 'MediaActions',
-      description:
-        'Legacy/OpenClaw media action workflow. Useful for image-to-image results; not on the critical XHS publishing path.',
-      'x-ui': { navLabel: '素材动作', legacy: true },
     },
     {
       name: 'Webhooks',
@@ -678,7 +672,7 @@ export const openApiDocument = {
       },
       websocket: {
         endpoint: 'WS /ws',
-        useFor: ['content_updated', 'publish_update', 'media_action_done', 'media_action_failed'],
+        useFor: ['content_updated', 'publish_update'],
         heartbeat: { send: { type: 'ping' }, receive: 'pong' },
       },
     },
@@ -713,7 +707,7 @@ export const openApiDocument = {
         'GET /api/publish-status/account/all',
         'GET /api/publish/progress',
       ],
-      legacyOptional: ['/api/media/*', '/api/media/actions/*'],
+      legacyOptional: ['/api/media/*'],
       integrationOnly: ['/api/webhook/*'],
     },
   },
@@ -1161,104 +1155,12 @@ export const openApiDocument = {
         additionalProperties: { type: 'array', items: { type: 'string' } },
         example: { style: ['lookbook'], scene: ['studio'] },
       },
-      MediaActionDefinition: {
-        type: 'object',
-        properties: {
-          type: {
-            type: 'string',
-            enum: ['wx-work-post', 'wechat-article', 'image-to-image', 'image-recognition'],
-          },
-          label: { type: 'string' },
-          description: { type: 'string' },
-          fields: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                key: { type: 'string' },
-                label: { type: 'string' },
-                type: { type: 'string', enum: ['text', 'textarea'] },
-                required: { type: 'boolean' },
-                placeholder: { type: 'string' },
-              },
-            },
-          },
-          dispatchMethod: { type: 'string', example: 'POST' },
-          dispatchPathname: { type: 'string' },
-        },
-      },
-      MediaActionSummary: {
-        type: 'object',
-        properties: {
-          id: { type: 'string' },
-          actionType: { type: 'string' },
-          status: {
-            type: 'string',
-            enum: [
-              'QUEUED',
-              'DISPATCHING',
-              'DISPATCHED',
-              'RUNNING',
-              'NEEDS_AUTH',
-              'SUCCESS',
-              'FAILED',
-            ],
-          },
-          operator: { type: 'string' },
-          assets: { type: 'array', items: { type: 'object', additionalProperties: true } },
-          formData: { type: 'object', additionalProperties: true },
-          context: { type: 'object', additionalProperties: true },
-          externalTaskId: { type: 'string' },
-          error: { type: 'string' },
-          callbackPayload: { type: 'object', additionalProperties: true },
-          createdAt: { type: 'string', format: 'date-time' },
-          updatedAt: { type: 'string', format: 'date-time' },
-        },
-      },
-      CreateMediaActionRequest: objectSchema(
-        {
-          actionType: { type: 'string' },
-          operator: { type: 'string' },
-          assets: {
-            type: 'array',
-            items: objectSchema({ rootId: { type: 'string' }, relativePath: { type: 'string' } }, [
-              'rootId',
-              'relativePath',
-            ]),
-          },
-          formData: { type: 'object', additionalProperties: true },
-          context: { type: 'object', additionalProperties: true },
-        },
-        ['actionType', 'assets']
-      ),
-      MediaActionUploadRoot: {
-        type: 'object',
-        properties: { id: { type: 'string' }, label: { type: 'string' }, path: { type: 'string' } },
-      },
-      MediaActionUploadItem: {
-        type: 'object',
-        properties: {
-          filename: { type: 'string' },
-          relativePath: { type: 'string' },
-          parentPath: { type: 'string' },
-          size: { type: 'integer' },
-          modifiedAt: { type: 'string', format: 'date-time' },
-          mimeType: { type: 'string' },
-        },
-      },
-      MediaActionUploadItemsResponse: {
-        type: 'object',
-        properties: {
-          items: { type: 'array', items: ref('MediaActionUploadItem') },
-          nextCursor: { type: 'string', nullable: true },
-        },
-      },
       WebhookEnvelope: {
         type: 'object',
         properties: {
           version: { type: 'string', example: '1.0' },
           eventId: { type: 'string' },
-          kind: { type: 'string', enum: ['publish', 'media-action', 'account'] },
+          kind: { type: 'string', enum: ['publish', 'account'] },
           taskId: { type: 'string' },
           actionType: { type: 'string' },
           status: { type: 'string' },
@@ -2075,158 +1977,6 @@ export const openApiDocument = {
       },
     },
 
-    '/api/media/actions/definitions': {
-      get: {
-        tags: ['MediaActions'],
-        summary: 'List media action definitions',
-        operationId: 'listMediaActionDefinitions',
-        responses: {
-          200: jsonResponse('Action definitions', {
-            type: 'array',
-            items: ref('MediaActionDefinition'),
-          }),
-        },
-      },
-    },
-    '/api/media/actions': {
-      get: {
-        tags: ['MediaActions'],
-        summary: 'List recent media actions',
-        operationId: 'listMediaActions',
-        parameters: [queryParam('limit', { type: 'number', default: 20 })],
-        responses: {
-          200: jsonResponse('Recent media actions', {
-            type: 'array',
-            items: ref('MediaActionSummary'),
-          }),
-        },
-      },
-      post: {
-        tags: ['MediaActions'],
-        summary: 'Submit media action',
-        operationId: 'createMediaAction',
-        requestBody: requestBody(ref('CreateMediaActionRequest'), {
-          actionType: 'image-to-image',
-          operator: 'user',
-          assets: [{ rootId: 'dapai', relativePath: '2026/04/09/A款/1.png' }],
-          formData: { mode: 'lookbook' },
-        }),
-        responses: { 200: jsonResponse('Created media action', ref('MediaActionSummary')) },
-      },
-    },
-    '/api/media/actions/{id}': {
-      get: {
-        tags: ['MediaActions'],
-        summary: 'Get media action detail',
-        operationId: 'getMediaAction',
-        parameters: [pathParam('id', 'Media action id.')],
-        responses: {
-          200: jsonResponse('Media action', ref('MediaActionSummary')),
-          404: errorResponse('Media action not found'),
-        },
-      },
-      delete: {
-        tags: ['MediaActions'],
-        summary: 'Delete media action',
-        operationId: 'deleteMediaAction',
-        parameters: [pathParam('id', 'Media action id.')],
-        responses: {
-          200: jsonResponse('Delete result'),
-          404: errorResponse('Media action not found'),
-        },
-      },
-    },
-    '/api/media/actions/{id}/retry': {
-      post: {
-        tags: ['MediaActions'],
-        summary: 'Retry media action',
-        operationId: 'retryMediaAction',
-        parameters: [pathParam('id', 'Media action id.')],
-        responses: { 200: jsonResponse('Retried media action', ref('MediaActionSummary')) },
-      },
-    },
-    '/api/media/actions/{id}/uploads/{filepath}': {
-      get: {
-        tags: ['MediaActions'],
-        summary: 'Read uploaded result for a media action',
-        operationId: 'readMediaActionUploadFile',
-        parameters: [
-          pathParam('id', 'Media action id.'),
-          pathParam('filepath', 'Wildcard upload file path.'),
-        ],
-        responses: {
-          200: binaryResponse('Upload file'),
-          404: errorResponse('Upload file not found'),
-        },
-      },
-    },
-    '/api/media/actions/uploads/roots': {
-      get: {
-        tags: ['MediaActions'],
-        summary: 'List upload browser roots',
-        operationId: 'listMediaActionUploadRoots',
-        responses: {
-          200: jsonResponse('Upload roots', { type: 'array', items: ref('MediaActionUploadRoot') }),
-        },
-      },
-    },
-    '/api/media/actions/uploads/tree': {
-      get: {
-        tags: ['MediaActions'],
-        summary: 'Get upload result tree',
-        operationId: 'getMediaActionUploadTree',
-        parameters: [queryParam('provider'), queryParam('path')],
-        responses: {
-          200: jsonResponse('Upload result tree', {
-            type: 'array',
-            items: ref('MediaDateTreeYear'),
-          }),
-        },
-      },
-    },
-    '/api/media/actions/uploads/items': {
-      get: {
-        tags: ['MediaActions'],
-        summary: 'List upload result items',
-        operationId: 'listMediaActionUploadItems',
-        parameters: [
-          queryParam('provider'),
-          queryParam('path'),
-          queryParam('recursive', { type: 'boolean' }),
-          queryParam('limit'),
-          queryParam('cursor'),
-        ],
-        responses: {
-          200: jsonResponse('Upload result items', ref('MediaActionUploadItemsResponse')),
-        },
-      },
-    },
-    '/api/media/actions/uploads/{provider}/{filepath}': {
-      get: {
-        tags: ['MediaActions'],
-        summary: 'Read upload browser file',
-        operationId: 'readUploadBrowserFile',
-        parameters: [
-          pathParam('provider', 'Upload provider, e.g. openclaw.'),
-          pathParam('filepath', 'Wildcard upload file path.'),
-        ],
-        responses: {
-          200: binaryResponse('Upload file'),
-          404: errorResponse('Upload file not found'),
-        },
-      },
-      delete: {
-        tags: ['MediaActions'],
-        summary: 'Delete upload browser file',
-        operationId: 'deleteUploadBrowserFile',
-        parameters: [
-          pathParam('provider', 'Upload provider, e.g. openclaw.'),
-          pathParam('filepath', 'Wildcard upload file path.'),
-        ],
-        responses: { 200: jsonResponse('Delete result'), 400: errorResponse('Delete failed') },
-      },
-    },
-
     '/api/webhook/{platform}/publish-result': {
       post: {
         tags: ['Webhooks'],
@@ -2251,33 +2001,6 @@ export const openApiDocument = {
           target: { platform: 'xiaohongshu' },
           result: { url: 'https://www.xiaohongshu.com/explore/123' },
         }),
-        responses: { 200: jsonResponse('Callback result'), 401: errorResponse('Unauthorized') },
-      },
-    },
-    '/api/webhook/media-actions/{actionType}/result': {
-      post: {
-        tags: ['Webhooks'],
-        summary: 'Receive media action result callback',
-        description:
-          'Media action callback. Supports JSON envelope and multipart uploads containing generated files.',
-        operationId: 'receiveMediaActionResultWebhook',
-        security: [{ webhookBearerAuth: [] }],
-        parameters: [pathParam('actionType', 'Media action type, e.g. image-to-image.')],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': { schema: ref('WebhookEnvelope') },
-            'multipart/form-data': {
-              schema: objectSchema(
-                {
-                  payload: { type: 'string' },
-                  files: { type: 'array', items: { type: 'string', format: 'binary' } },
-                },
-                ['payload']
-              ),
-            },
-          },
-        },
         responses: { 200: jsonResponse('Callback result'), 401: errorResponse('Unauthorized') },
       },
     },

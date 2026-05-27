@@ -138,7 +138,7 @@ describe('api documentation routes', () => {
     const res = await app.handle(new Request('http://localhost/docs/openapi.json'));
     const spec = await res.json();
 
-    expect(documentedEndpoints.length).toBeGreaterThan(50);
+    expect(documentedEndpoints.length).toBeGreaterThan(40);
     for (const endpoint of documentedEndpoints) {
       expect(spec.paths[endpoint.path]?.[endpoint.method]).toBeDefined();
     }

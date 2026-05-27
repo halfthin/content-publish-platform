@@ -1,5 +1,4 @@
 import { logger } from '../config/logger.js';
-import type { MediaActionBroadcast } from '../types/media-action-sse.js';
 
 interface WSMessage {
   type: string;
@@ -41,27 +40,4 @@ export function setupWebSocket() {
       logger.info('WebSocket client disconnected', { clientCount: clients.size });
     },
   };
-}
-
-/**
- * Broadcast a media action event to all connected WebSocket clients
- */
-export function broadcastMediaAction(message: MediaActionBroadcast): void {
-  const payload = JSON.stringify({ ...message, timestamp: Date.now() });
-  let sent = 0;
-
-  for (const client of clients) {
-    try {
-      client.send(payload);
-      sent++;
-    } catch {
-      // Remove dead clients silently
-      clients.delete(client);
-    }
-  }
-
-  logger.debug('Broadcast media action', {
-    type: message.type,
-    clientCount: sent,
-  });
 }

@@ -37,13 +37,28 @@ export function setupXhsCallbackRoutes() {
   const log = getLogger(['app', 'publish', 'xiaohongshu']);
 
   return new Elysia({ prefix: '/_internal/queues' }).post('/xhs', async ({ body }) => {
-    const { data } = body as HtQueueCallbackPayload;
-    const { taskId, contentId, accountId, content } = data;
-    const startTime = Date.now();
-
-    log.info('Processing xhs publish callback', { taskId, contentId, accountId });
+    let publisher: any;
+    let taskId = '';
+    let contentId = '';
+    let accountId = '';
+    let content: any;
+    let startTime = 0;
 
     try {
+      const { data } = body as HtQueueCallbackPayload;
+      taskId = data.taskId;
+      contentId = data.contentId;
+      accountId = data.accountId;
+      content = data.content;
+      startTime = Date.now();
+
+      if (!data?.taskId || !data?.contentId || !data?.accountId) {
+        log.warn('Missing required fields in callback payload');
+        return { success: false, error: 'Missing required fields' };
+      }
+
+      log.info('Processing xhs publish callback', { taskId, contentId, accountId });
+
       await reportProgress(taskId, 'decrypting-cookies', 5, '正在解密 Cookie');
 
       // 获取并解密 cookies
@@ -84,6 +99,14 @@ export function setupXhsCallbackRoutes() {
         });
 
         if (!result.success) {
+          if (data.publishLogId) {
+            await prisma.publishLog
+              .update({
+                where: { id: data.publishLogId },
+                data: { status: 'FAILED', errorMessage: result.error, completedAt: new Date() },
+              })
+              .catch(() => {});
+          }
           await reportFail(taskId, 'GATEWAY_ERROR', result.error || 'Gateway publish failed');
           return { success: false, error: result.error };
         }
@@ -111,7 +134,7 @@ export function setupXhsCallbackRoutes() {
       await reportProgress(taskId, 'loading-browser', 10, '正在初始化浏览器');
 
       const { XiaohongshuPublisher } = await import('../../publishers/xiaohongshu');
-      const publisher = new XiaohongshuPublisher({
+      publisher = new XiaohongshuPublisher({
         accountId,
         headless: process.env.PLAYWRIGHT_HEADLESS !== 'false',
         timeout: 120000,
@@ -188,6 +211,11 @@ export function setupXhsCallbackRoutes() {
       await publisher.close();
       return { success: true };
     } catch (error) {
+      if (typeof publisher !== 'undefined') {
+        try {
+          await publisher.close();
+        } catch {}
+      }
       const errMsg = error instanceof Error ? error.message : String(error);
       log.error('XHS publish failed', { taskId, error: errMsg });
 

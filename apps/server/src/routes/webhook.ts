@@ -1,20 +1,12 @@
 import { Elysia, t } from 'elysia';
 import { gatewayConfig } from '../config/gateway';
 import { createLogger } from '../config/logger';
-import { getMediaActionGatewayConfig } from '../config/media-actions';
 import { prisma } from '../config/prisma';
 import {
   type AccountCheckLoginCallbackStore,
   createRedisAccountCheckLoginCallbackStore,
 } from '../services/account-check-login-callbacks.service';
 import { moveToPublished } from '../services/content.service';
-import { getSseManager } from '../services/media-action-sse-manager';
-import {
-  createMediaActionsService,
-  createRedisMediaActionStore,
-  type MediaActionsService,
-} from '../services/media-actions.service';
-import { createMediaLibraryService } from '../services/media-library.service';
 import {
   createRedisOpenClawCallbackEventDeduper,
   type OpenClawCallbackEventDeduper,
@@ -23,13 +15,7 @@ import {
   normalizeOpenClawCallback,
   OpenClawCallbackNormalizationError,
 } from '../services/openclaw-callback-normalizer';
-import {
-  createOpenClawResultStorageService,
-  type OpenClawResultStorageService,
-} from '../services/openclaw-result-storage.service';
-import type { MediaActionBroadcast } from '../types/media-action-sse';
 import type { OpenClawCallbackEnvelopeV1 } from '../types/openclaw-callback';
-import { broadcastMediaAction } from '../websocket/server';
 
 const logger = createLogger('webhook-route');
 
@@ -52,30 +38,12 @@ export interface CheckLoginResult {
 }
 
 export interface SetupWebhookRoutesOptions {
-  mediaActionsService?: MediaActionsService;
   gatewayCallbackToken?: string;
-  mediaActionCallbackToken?: string;
   callbackEventDeduper?: OpenClawCallbackEventDeduper;
   accountCheckLoginCallbackStore?: AccountCheckLoginCallbackStore;
   openClawResultStorage?: OpenClawResultStorageService;
   prismaClient?: typeof prisma;
   moveToPublished?: typeof moveToPublished;
-}
-
-function validateOptionalBearerToken(
-  authHeader: string | undefined,
-  expectedToken: string
-): boolean {
-  if (!expectedToken) {
-    return true;
-  }
-
-  if (!authHeader) {
-    return false;
-  }
-
-  const token = authHeader.replace(/^Bearer\s+/i, '');
-  return token === expectedToken;
 }
 
 /**
@@ -169,120 +137,14 @@ function normalizeRawBody(body: unknown): Record<string, unknown> {
   return body as Record<string, unknown>;
 }
 
-function mergeArtifacts(
-  existing: OpenClawCallbackEnvelopeV1['result'] extends { artifacts?: infer T } ? T : never,
-  appended: NonNullable<OpenClawCallbackEnvelopeV1['result']>['artifacts']
-) {
-  return [...(existing || []), ...(appended || [])];
-}
-
-function mergeUploadResult(
-  payload: OpenClawCallbackEnvelopeV1,
-  upload: Awaited<ReturnType<OpenClawResultStorageService['store']>>
-): Record<string, unknown> {
-  const baseResult = payload.result || null;
-  const baseExtra =
-    baseResult?.extra && typeof baseResult.extra === 'object' && !Array.isArray(baseResult.extra)
-      ? baseResult.extra
-      : {};
-
-  return {
-    externalId: baseResult?.externalId || null,
-    url: baseResult?.url || null,
-    summary: baseResult?.summary || null,
-    artifacts: mergeArtifacts(baseResult?.artifacts, upload.artifacts),
-    extra: {
-      ...baseExtra,
-      upload: {
-        provider: 'openclaw',
-        fileCount: upload.files.length,
-        directory: upload.directory.relativePath,
-        directoryAbsolutePath: upload.directory.absolutePath,
-        manifestPath: upload.manifest.relativePath,
-        manifestAbsolutePath: upload.manifest.absolutePath,
-        files: upload.files.map((file) => ({
-          fieldName: file.fieldName,
-          originalName: file.originalName,
-          storedName: file.storedName,
-          relativePath: file.relativePath,
-          absolutePath: file.absolutePath,
-          mimeType: file.mimeType,
-          size: file.size,
-        })),
-      },
-    },
-  };
-}
-
-async function parseMediaActionCallbackRequest(request: Request): Promise<{
-  payload: unknown;
-  rawBody: Record<string, unknown>;
-  files: Array<{ fieldName: string; file: File }>;
-}> {
-  const contentType = request.headers.get('content-type')?.toLowerCase() || '';
-
-  if (contentType.includes('multipart/form-data')) {
-    const formData = await request.formData();
-    const payloadField = formData.get('payload');
-
-    if (typeof payloadField !== 'string') {
-      throw new OpenClawCallbackNormalizationError(
-        'Multipart callback must include a JSON string field named payload'
-      );
-    }
-
-    let parsedPayload: unknown;
-    try {
-      parsedPayload = JSON.parse(payloadField);
-    } catch {
-      throw new OpenClawCallbackNormalizationError('Invalid JSON in multipart payload field');
-    }
-
-    const files = Array.from(formData.entries())
-      .filter(
-        (entry): entry is [string, File] => entry[0] !== 'payload' && entry[1] instanceof File
-      )
-      .filter(([, file]) => file.size > 0)
-      .map(([fieldName, file]) => ({ fieldName, file }));
-
-    return {
-      payload: parsedPayload,
-      rawBody: normalizeRawBody(parsedPayload),
-      files,
-    };
-  }
-
-  let parsedPayload: unknown;
-  try {
-    parsedPayload = await request.json();
-  } catch {
-    throw new OpenClawCallbackNormalizationError('Callback payload must be valid JSON');
-  }
-
-  return {
-    payload: parsedPayload,
-    rawBody: normalizeRawBody(parsedPayload),
-    files: [],
-  };
-}
-
 /**
  * Webhook 路由
  */
 export function setupWebhookRoutes(options: SetupWebhookRoutesOptions = {}) {
-  const mediaActionGatewayConfig = getMediaActionGatewayConfig();
-  const mediaActionsService =
-    options.mediaActionsService ||
-    createMediaActionsService({
-      mediaService: createMediaLibraryService(),
-      store: createRedisMediaActionStore(),
-    });
   const callbackEventDeduper =
     options.callbackEventDeduper || createRedisOpenClawCallbackEventDeduper();
   const accountCheckLoginCallbackStore =
     options.accountCheckLoginCallbackStore || createRedisAccountCheckLoginCallbackStore();
-  const openClawResultStorage =
-    options.openClawResultStorage || createOpenClawResultStorageService();
   const db = options.prismaClient || prisma;
   const moveContentToPublished = options.moveToPublished || moveToPublished;
   const gatewayCallbackToken = options.gatewayCallbackToken ?? gatewayConfig.fromGatewayToken;
@@ -482,167 +344,6 @@ export function setupWebhookRoutes(options: SetupWebhookRoutesOptions = {}) {
         }
       )
 
-      // media action 回调
-      .post(
-        '/media-actions/:actionType/result',
-        async ({ headers, params, request, set }) => {
-          const isAuthorized = validateOptionalBearerToken(
-            headers.authorization,
-            options.mediaActionCallbackToken || mediaActionGatewayConfig.fromGatewayToken
-          );
-
-          if (!isAuthorized) {
-            set.status = 401;
-            return { success: false, error: 'Unauthorized' };
-          }
-
-          let normalizedCallback: OpenClawCallbackEnvelopeV1 | null = null;
-          let storedUpload: Awaited<ReturnType<OpenClawResultStorageService['store']>> | null =
-            null;
-
-          try {
-            const parsedRequest = await parseMediaActionCallbackRequest(request);
-
-            normalizedCallback = normalizeOpenClawCallback(parsedRequest.payload, {
-              kind: 'media-action',
-              actionType: params.actionType,
-            });
-            const claimedMediaEvent = await claimCallbackEvent(
-              callbackEventDeduper,
-              normalizedCallback.eventId
-            );
-            if (!claimedMediaEvent) {
-              logger.info('Duplicate media action callback ignored', {
-                eventId: normalizedCallback.eventId,
-                taskId: normalizedCallback.taskId,
-              });
-              return {
-                success: true,
-                duplicate: true,
-                data: {
-                  eventId: normalizedCallback.eventId,
-                  taskId: normalizedCallback.taskId,
-                  actionType: normalizedCallback.actionType,
-                  status: normalizedCallback.status,
-                  upload: null,
-                },
-              };
-            }
-
-            let callbackResult: Record<string, unknown> | undefined;
-            if (parsedRequest.files.length > 0) {
-              storedUpload = await openClawResultStorage.store({
-                taskId: normalizedCallback.taskId,
-                eventId: normalizedCallback.eventId,
-                actionType: normalizedCallback.actionType,
-                timestamp: normalizedCallback.timestamp,
-                refs: normalizedCallback.refs,
-                payload: normalizedCallback,
-                files: parsedRequest.files,
-              });
-              callbackResult = mergeUploadResult(normalizedCallback, storedUpload);
-            } else if (normalizedCallback.result) {
-              callbackResult = normalizedCallback.result as unknown as Record<string, unknown>;
-            }
-
-            await mediaActionsService.handleCallback({
-              jobId: normalizedCallback.refs?.mediaActionId || undefined,
-              taskId: normalizedCallback.taskId,
-              actionType: normalizedCallback.actionType,
-              status: normalizedCallback.status,
-              error: normalizedCallback.error?.message,
-              result: callbackResult,
-              timestamp: normalizedCallback.timestamp,
-              refs: {
-                mediaActionId: normalizedCallback.refs?.mediaActionId || null,
-              },
-            } as Parameters<MediaActionsService['handleCallback']>[0]);
-
-            // 如果 SSE 未订阅（终态回调），通过 WebSocket 广播确保前端能收到
-            const callbackJobId = normalizedCallback.refs?.mediaActionId || undefined;
-            if (callbackJobId) {
-              const sseManager = getSseManager();
-              const isSseActive = sseManager?.isSubscribed(callbackJobId) ?? false;
-              if (!isSseActive) {
-                const status = normalizedCallback.status;
-                const outputFiles =
-                  storedUpload?.files.map((f) => f.relativePath) ||
-                  ((normalizedCallback.result as Record<string, unknown>)?.outputFiles as
-                    | string[]
-                    | undefined);
-                const externalTaskId = normalizedCallback.taskId;
-                if (status === 'success') {
-                  const msg: MediaActionBroadcast = {
-                    type: 'media_action_done',
-                    data: {
-                      jobId: callbackJobId,
-                      externalTaskId,
-                      event: 'done',
-                      status: 'success',
-                      message:
-                        ((normalizedCallback.result as Record<string, unknown>)?.summary as
-                          | string
-                          | undefined) || (normalizedCallback.result as unknown as string),
-                      outputFiles,
-                      result: normalizedCallback.result as Record<string, unknown>,
-                    },
-                  };
-                  broadcastMediaAction(msg);
-                } else if (status === 'failed') {
-                  const msg: MediaActionBroadcast = {
-                    type: 'media_action_failed',
-                    data: {
-                      jobId: callbackJobId,
-                      externalTaskId,
-                      event: 'failed',
-                      status: 'failed',
-                      message: normalizedCallback.error?.message,
-                      error: normalizedCallback.error?.message,
-                      outputFiles,
-                    },
-                  };
-                  broadcastMediaAction(msg);
-                }
-              }
-            }
-
-            return {
-              success: true,
-              data: {
-                eventId: normalizedCallback.eventId,
-                taskId: normalizedCallback.taskId,
-                actionType: normalizedCallback.actionType,
-                status: normalizedCallback.status,
-                upload: storedUpload
-                  ? {
-                      fileCount: storedUpload.files.length,
-                      directory: storedUpload.directory.relativePath,
-                      manifestPath: storedUpload.manifest.relativePath,
-                    }
-                  : null,
-              },
-            };
-          } catch (error) {
-            if (normalizedCallback) {
-              await releaseCallbackEvent(callbackEventDeduper, normalizedCallback.eventId);
-            }
-            if (storedUpload) {
-              await openClawResultStorage.cleanup(storedUpload);
-            }
-            if (error instanceof Error && 'status' in error) {
-              set.status = Number((error as { status: number }).status || 500);
-              return { success: false, error: error.message };
-            }
-            set.status = 500;
-            return { success: false, error: 'Internal error' };
-          }
-        },
-        {
-          params: t.Object({
-            actionType: t.String(),
-          }),
-        }
-      )
       // check-login 回调
       .post(
         '/:platform/check-login-result',

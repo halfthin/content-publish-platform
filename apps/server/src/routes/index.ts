@@ -7,9 +7,9 @@ import { setupApiDocRoutes } from './api-doc';
 import { setupContentsRoutes } from './contents';
 import { setupHealthRoutes } from './health';
 import { setupMediaRoutes } from './media';
-import { setupMediaActionRoutes } from './media-actions';
 import { setupPublishRoutes } from './publish';
 import { setupPublishStatusRoutes } from './publish-status';
+import { setupXhsCallbackRoutes } from './queues/xhs.callback';
 import { setupWebhookRoutes } from './webhook';
 import { setupXhsRoutes } from './xhs';
 
@@ -52,10 +52,10 @@ export function setupRoutes() {
       .use(setupPublishStatusRoutes())
       // Webhook 回调
       .use(setupWebhookRoutes())
+      // 小红书 MCP 回调
+      .use(setupXhsCallbackRoutes())
       // 素材库 API
       .use(setupMediaRoutes())
-      // 素材动作 API
-      .use(setupMediaActionRoutes())
       // 通用发布 API
       .use(setupPublishRoutes())
       // 小红书 MCP 直连 API
