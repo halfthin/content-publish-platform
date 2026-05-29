@@ -397,6 +397,12 @@ export const openApiDocument = {
       'x-ui': { nav: false, integrationOnly: true },
     },
     {
+      name: 'Publishers',
+      description:
+        '发布实例发现 — 查询当前有哪些发布渠道可用、每个渠道的实例状态与登录情况。',
+      'x-ui': { navLabel: '发布渠道', primaryViews: ['publisher-list'] },
+    },
+    {
       name: 'Realtime',
       description: 'WebSocket notifications for content and media action updates.',
       'x-ui': { nav: false, integrationOnly: true },
@@ -1743,6 +1749,71 @@ export const openApiDocument = {
           400: errorResponse('Missing required fields', {
             success: false,
             error: 'accountId, title, content, video required',
+          }),
+        },
+      },
+    },
+
+    '/api/publishers': {
+      get: {
+        tags: ['Publishers'],
+        summary: 'List all available publish instances',
+        description:
+          '从 XHS_MCP_INSTANCES 配置中发现所有可用的发布实例，并验证每个实例的在线状态。前端据此展示可用的发布渠道。',
+        operationId: 'listPublishers',
+        responses: {
+          200: directJsonResponse('Publisher list', {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    platform: { type: 'string', example: 'xiaohongshu' },
+                    name: { type: 'string', example: 'xhs-1' },
+                    label: { type: 'string', example: '小红书 - xhs-1' },
+                    type: { type: 'string', example: 'mcp' },
+                    status: {
+                      type: 'string',
+                      enum: ['online', 'offline', 'logged_in', 'expired', 'unknown'],
+                    },
+                  },
+                },
+              },
+            },
+          }),
+        },
+      },
+    },
+    '/api/publishers/{platform}': {
+      get: {
+        tags: ['Publishers'],
+        summary: 'List instances for a specific platform',
+        description: '查询指定平台的所有发布实例及其状态。',
+        operationId: 'listPublishersByPlatform',
+        parameters: [pathParam('platform', 'Platform name, e.g. xiaohongshu.')],
+        responses: {
+          200: directJsonResponse('Platform publisher list', {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    platform: { type: 'string' },
+                    name: { type: 'string' },
+                    label: { type: 'string' },
+                    type: { type: 'string' },
+                    status: { type: 'string' },
+                    supportsAuth: { type: 'boolean' },
+                  },
+                },
+              },
+            },
           }),
         },
       },
