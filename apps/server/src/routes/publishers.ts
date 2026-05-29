@@ -28,7 +28,7 @@ function platformLabel(platform: string): string {
 }
 
 /**
- * 验证 MCP 实例是否可达
+ * 验证 MCP 实例是否可达（走标准 MCP initialize 流程）
  */
 async function checkMcpHealth(mcpUrl: string): Promise<'online' | 'offline'> {
   try {
@@ -37,8 +37,12 @@ async function checkMcpHealth(mcpUrl: string): Promise<'online' | 'offline'> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         jsonrpc: '2.0',
-        method: 'tools/call',
-        params: { name: 'check_login_status', arguments: {} },
+        method: 'initialize',
+        params: {
+          protocolVersion: '0.1.0',
+          capabilities: {},
+          clientInfo: { name: 'cpp', version: '1.0.0' },
+        },
         id: 1,
       }),
       signal: AbortSignal.timeout(5000),
