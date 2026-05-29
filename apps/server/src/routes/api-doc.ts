@@ -20,15 +20,6 @@ const binaryContent = {
   },
 };
 
-const textEventStreamContent = {
-  'text/event-stream': {
-    schema: ref('ProgressEventStream'),
-    example:
-      'data: {"type":"publish","platform":"system","status":"connected"}\n\n' +
-      'data: {"type":"publish","jobId":"job-001","platform":"xiaohongshu","status":"RUNNING","progress":60}\n\n',
-  },
-};
-
 const envelope = (dataSchema: OpenApiSchema) => ({
   allOf: [
     ref('ApiEnvelope'),
@@ -121,7 +112,7 @@ const platformSchema = {
 
 const contentStatusSchema = {
   type: 'string',
-  enum: ['PENDING', 'APPROVED', 'REJECTED', 'PUBLISHING', 'PUBLISHED', 'FAILED'],
+  enum: ['PENDING', 'APPROVED', 'REJECTED', 'PUBLISHED', 'FAILED'],
   description:
     'Content workflow state. UI should gate actions: approve/reject for PENDING, publish for APPROVED, retry from publish logs for FAILED.',
 };
@@ -220,22 +211,12 @@ const readinessExample = {
 
 const contentExample = {
   id: 'content-001',
+  relativePath: 'inbox/笔记12/',
   title: '今天的穿搭分享',
-  description: '上衣是... 裤子是... 这套适合通勤。',
-  type: 'IMAGE',
   status: 'PENDING',
-  basePath: '/data/content/inbox/note-001',
-  images: ['/data/content/inbox/note-001/01.jpg', '/data/content/inbox/note-001/02.jpg'],
-  video: null,
-  mdFile: '/data/content/inbox/note-001/content.md',
-  reviewedBy: null,
-  reviewedAt: null,
-  reviewNote: null,
-  tags: ['穿搭', '通勤'],
-  category: '日常',
-  publishCount: 0,
   createdAt: '2026-05-17T00:00:00.000Z',
   updatedAt: '2026-05-17T00:00:00.000Z',
+  finishedAt: null,
 };
 
 const accountExample = {
@@ -338,11 +319,11 @@ export const openApiDocument = {
       '',
       'Frontend design guidance:',
       '- Build the main IA around Contents, Accounts, Publish Status, XHS MCP, and Realtime progress.',
-      '- The canonical content workflow is inbox scan → PENDING review → APPROVED publish → PUBLISHED/FAILED status.',
+      '- The canonical content workflow is inbox scan → PENDING review → APPROVE (creates PublishPlan) → PUBLISHED/FAILED status.',
       '- Use status enums to gate UI actions instead of hard-coding route availability.',
       '- File endpoints return binary data and are intended for previews/downloads, not JSON clients.',
-      '- `/api/xhs/*` is the direct XHS MCP convenience surface; `/api/publish` is the generic Publisher Framework surface.',
-      '- `/api/media/*` are legacy/material-workflow APIs that are still mounted but not required for the service-only publishing MVP.',
+      '- `/api/xhs/*` is the direct XHS MCP convenience surface; reviewed content should go through the approve flow instead.',
+      '- The Publish tag is no longer mounted; publish progress monitoring moves to the ht-queue SSE stream.',
       '',
       'Production access control:',
       '- Production management APIs under `/api/*` require `Authorization: Bearer <API_AUTH_TOKEN>` unless the route is a webhook callback.',
@@ -368,11 +349,12 @@ export const openApiDocument = {
     {
       name: 'Contents',
       description:
-        'Content ingestion and review workflow. Frontend should model this as a review queue with detail preview and publish action once approved.',
+        'Content ingestion and review workflow. Frontend should model this as a review queue with approve/reject actions. Approval creates PublishPlans.',
       'x-ui': {
         navLabel: '内容库',
-        primaryViews: ['list', 'detail', 'review-panel', 'publish-panel'],
-        stateMachine: 'PENDING -> APPROVED/REJECTED -> PUBLISHING -> PUBLISHED/FAILED',
+        primaryViews: ['list', 'detail', 'review-panel', 'publish-plan-panel'],
+        stateMachine:
+          'PENDING -> APPROVED/REJECTED, then PublishPlan drives async publish -> PUBLISHED/FAILED',
       },
     },
     {
@@ -393,8 +375,8 @@ export const openApiDocument = {
     {
       name: 'Publish',
       description:
-        'Generic Publisher Framework endpoints plus SSE progress stream for task-oriented clients.',
-      'x-ui': { navLabel: '任务进度', primaryViews: ['progress-console'] },
+        'Publish endpoints moved to ht-queue service. SSE progress stream is available from the ht-queue SSE endpoint.',
+      'x-ui': { nav: false, deprecated: true },
     },
     {
       name: 'XHS',
@@ -405,8 +387,8 @@ export const openApiDocument = {
     {
       name: 'Media',
       description:
-        'Legacy media library browser. Still mounted; not required for the service-only publishing MVP unless the UI needs asset browsing.',
-      'x-ui': { navLabel: '素材库', legacy: true },
+        'Legacy media library endpoints. No longer mounted in the service-only publishing API.',
+      'x-ui': { nav: false, deprecated: true },
     },
     {
       name: 'Webhooks',
@@ -430,12 +412,12 @@ export const openApiDocument = {
       'XHS MCP login and quick publish workflow',
     ],
     mvpNavigation: ['内容库', '账号管理', '发布状态', '小红书'],
-    optionalNavigation: ['素材库', '素材动作'],
+    optionalNavigation: [],
     implementationNotes: [
       'Prefer optimistic refresh after mutations; most mutation responses include success/message/data.',
-      'Binary preview URLs should be assigned directly to img/video src after encoding wildcard path segments.',
-      'For XHS publishing from approved content, prefer POST /api/contents/{id}/publish over direct /api/xhs/publish so PublishLog and content archiving stay consistent.',
-      'Use /api/publish/progress SSE for live task feedback and /ws for broad app notifications.',
+      'File preview URLs should be assigned directly from content detail data.',
+      'For reviewed content, use POST /api/contents/{id}/approve which creates a PublishPlan; direct XHS publish bypasses the review/archive workflow.',
+      'Use the ht-queue SSE endpoint for live publish task progress; /ws provides broad app notifications.',
     ],
     pages: [
       {
@@ -443,13 +425,12 @@ export const openApiDocument = {
         route: '/contents',
         navLabel: '内容库',
         purpose:
-          'Review imported inbox content, preview media/markdown, approve/reject, then publish.',
+          'Review imported inbox content, approve (creates PublishPlan), reject, and track publish plans.',
         primaryComponents: [
           'status-tabs',
           'content-table',
-          'preview-drawer',
           'review-action-bar',
-          'publish-dialog',
+          'publish-plan-list',
         ],
         primaryEndpoints: {
           list: 'GET /api/contents',
@@ -458,7 +439,7 @@ export const openApiDocument = {
           scanInbox: 'POST /api/contents/scan-inbox',
           approve: 'POST /api/contents/{id}/approve',
           reject: 'POST /api/contents/{id}/reject',
-          publish: 'POST /api/contents/{id}/publish',
+          publishPlans: 'GET /api/contents/{id}/publish-plans',
           accountPicker: 'GET /api/accounts',
         },
         emptyState: {
@@ -498,11 +479,12 @@ export const openApiDocument = {
         id: 'publish-status',
         route: '/publish-status',
         navLabel: '发布状态',
-        purpose: 'Monitor publish logs, statistics, queue state, failures, and retries.',
+        purpose: 'Monitor publish logs, publish plans, statistics, failures, and retries.',
         primaryComponents: [
           'stat-cards',
           'status-breakdown',
           'publish-history-table',
+          'publish-plan-table',
           'failure-detail-dialog',
           'retry-action',
         ],
@@ -511,11 +493,11 @@ export const openApiDocument = {
           allHistory: 'GET /api/publish-status/account/all',
           contentHistory: 'GET /api/publish-status/content/{contentId}',
           retry: 'POST /api/publish-status/{id}/retry',
-          queueState: 'GET /api/publish/{jobId}',
+          publishPlans: 'GET /api/publish-plans',
         },
         emptyState: {
           title: '暂无发布记录',
-          nextActions: ['publishApprovedContent'],
+          nextActions: ['approveContent'],
         },
       },
       {
@@ -537,15 +519,15 @@ export const openApiDocument = {
           quickVideoPublish: 'POST /api/xhs/publish/video',
         },
         cautions: [
-          'For reviewed content, route publishing through POST /api/contents/{id}/publish.',
-          'Direct quick publish is advanced and may bypass content review/archive expectations.',
+          'For reviewed content, use POST /api/contents/{id}/approve which creates a PublishPlan.',
+          'Direct quick publish bypasses the review/archive workflow and does not create PublishPlans.',
         ],
       },
     ],
     workflows: {
       reviewAndPublish: {
         title: '内容审核发布闭环',
-        successEndState: 'Content.status=PUBLISHED and PublishLog.status=SUCCESS',
+        successEndState: 'Content.status=PUBLISHED and PublishPlan.status=DONE',
         steps: [
           {
             id: 'scan-inbox',
@@ -555,22 +537,18 @@ export const openApiDocument = {
           {
             id: 'review-detail',
             endpoint: 'GET /api/contents/{id}',
-            ui: 'detail drawer or page with gallery and markdown preview',
+            ui: 'detail drawer or page with content metadata',
           },
           {
             id: 'approve',
             endpoint: 'POST /api/contents/{id}/approve',
             visibleWhen: { contentStatus: 'PENDING' },
+            note: 'Creates a PublishPlan. This replaces the old queue-publish step.',
           },
           {
-            id: 'queue-publish',
-            endpoint: 'POST /api/contents/{id}/publish',
-            visibleWhen: { contentStatus: 'APPROVED', accountStatus: 'ACTIVE' },
-          },
-          {
-            id: 'monitor',
-            endpoint: 'GET /api/publish-status/content/{contentId}',
-            realtime: 'GET /api/publish/progress',
+            id: 'monitor-plan',
+            endpoint: 'GET /api/contents/{id}/publish-plans',
+            realtime: 'ht-queue SSE endpoint for publish task progress',
           },
         ],
       },
@@ -592,11 +570,6 @@ export const openApiDocument = {
             endpoint: 'POST /api/publish-status/{id}/retry',
             visibleWhen: { publishStatus: 'FAILED' },
           },
-          {
-            id: 'manual-compensation',
-            endpoint: 'POST /api/contents/{id}/move-to-published',
-            danger: true,
-          },
         ],
       },
     },
@@ -605,11 +578,23 @@ export const openApiDocument = {
         field: 'Content.status',
         transitions: {
           PENDING: { allowedActions: ['approve', 'reject'], next: ['APPROVED', 'REJECTED'] },
-          APPROVED: { allowedActions: ['publish'], next: ['PUBLISHING'] },
-          PUBLISHING: { allowedActions: ['monitor'], next: ['PUBLISHED', 'FAILED'] },
+          APPROVED: {
+            allowedActions: ['approveMore'],
+            next: ['PUBLISHED', 'FAILED'],
+            note: 'Approval creates PublishPlans; actual publish is async via Gateway. Monitor PublishPlan.status for progress.',
+          },
           PUBLISHED: { allowedActions: ['viewPublishedUrl'], terminal: true },
           FAILED: { allowedActions: ['inspectError', 'retryFromPublishLog'], terminal: false },
-          REJECTED: { allowedActions: ['viewReviewNote'], terminal: true },
+          REJECTED: { allowedActions: [], terminal: true },
+        },
+      },
+      publishPlan: {
+        field: 'PublishPlan.status',
+        transitions: {
+          PENDING: { note: 'Plan created, awaiting gateway dispatch.' },
+          PUBLISHING: { note: 'Gateway dispatched; monitor task progress via ht-queue SSE.' },
+          DONE: { terminal: true, note: 'Publish completed successfully.' },
+          FAILED: { allowedActions: ['retry'], note: 'Check errorMessage/errorCode for details.' },
         },
       },
       account: {
@@ -625,22 +610,27 @@ export const openApiDocument = {
       },
     },
     formContracts: {
-      publishApprovedContent: {
-        endpoint: 'POST /api/contents/{id}/publish',
+      approveContent: {
+        endpoint: 'POST /api/contents/{id}/approve',
         fields: {
           platform: { component: 'select', optionsFrom: 'Platform enum', required: true },
           accountId: {
             component: 'account-select',
             optionsEndpoint: 'GET /api/accounts?platform={platform}&status=ACTIVE',
-            requiredInApi: false,
-            requiredInUi: true,
-            rationale:
-              'Backend has a fallback, but UI should force explicit account selection to avoid accidental publishing.',
+            required: true,
+          },
+          title: { component: 'text', required: false, note: 'Platform-specific title override.' },
+          reviewedBy: { component: 'hidden-or-text', requiredInUi: false },
+          note: { component: 'textarea', requiredInUi: false },
+          scheduledAt: {
+            component: 'datetime-picker',
+            required: false,
+            note: 'For scheduled publish.',
           },
         },
       },
-      reviewContent: {
-        endpoints: ['POST /api/contents/{id}/approve', 'POST /api/contents/{id}/reject'],
+      rejectContent: {
+        endpoint: 'POST /api/contents/{id}/reject',
         fields: {
           reviewedBy: { component: 'hidden-or-text', requiredInUi: false },
           note: { component: 'textarea', requiredInUi: false },
@@ -666,9 +656,10 @@ export const openApiDocument = {
     },
     realtime: {
       sse: {
-        endpoint: 'GET /api/publish/progress',
-        useFor: ['publish progress timeline', 'auth qr_ready/status progress'],
+        endpoint: 'ht-queue SSE endpoint (external: /api/publish/progress on ht-queue service)',
+        useFor: ['publish plan task progress', 'auth qr_ready/status progress'],
         reconnect: true,
+        note: 'SSE moved from CPP to ht-queue service. CPP no longer serves SSE progress.',
       },
       websocket: {
         endpoint: 'WS /ws',
@@ -698,16 +689,17 @@ export const openApiDocument = {
         'POST /api/contents/scan-inbox',
         'POST /api/contents/{id}/approve',
         'POST /api/contents/{id}/reject',
-        'POST /api/contents/{id}/publish',
+        'GET /api/contents/{id}/publish-plans',
+        'GET /api/publish-plans',
+        'GET /api/publish-plans/{id}',
         'GET /api/accounts',
         'POST /api/accounts',
         'POST /api/accounts/{id}/cookies',
         'POST /api/accounts/{id}/cookies/check-login',
         'GET /api/publish-status/stats',
         'GET /api/publish-status/account/all',
-        'GET /api/publish/progress',
       ],
-      legacyOptional: ['/api/media/*'],
+      legacyOptional: [],
       integrationOnly: ['/api/webhook/*'],
     },
   },
@@ -793,7 +785,6 @@ export const openApiDocument = {
         },
       },
       Platform: platformSchema,
-      ContentType: { type: 'string', enum: ['IMAGE', 'VIDEO', 'MIXED'] },
       ContentStatus: contentStatusSchema,
       AccountStatus: accountStatusSchema,
       LoginStatus: loginStatusSchema,
@@ -916,72 +907,56 @@ export const openApiDocument = {
       ),
       Content: {
         type: 'object',
-        description:
-          'Content record created from CONTENT_DIR/inbox scan. Paths are server/container paths.',
+        description: 'Content record created from CONTENT_DIR/inbox scan.',
         properties: {
           id: { type: 'string' },
+          relativePath: { type: 'string', example: 'inbox/笔记12/' },
           title: { type: 'string' },
-          description: { type: 'string', nullable: true },
-          type: ref('ContentType'),
           status: ref('ContentStatus'),
-          basePath: { type: 'string' },
-          images: { type: 'array', items: { type: 'string' } },
-          video: { type: 'string', nullable: true },
-          mdFile: { type: 'string' },
-          reviewedBy: { type: 'string', nullable: true },
-          reviewedAt: { type: 'string', format: 'date-time', nullable: true },
-          reviewNote: { type: 'string', nullable: true },
-          tags: { type: 'array', items: { type: 'string' } },
-          category: { type: 'string', nullable: true },
-          publishCount: { type: 'integer' },
           createdAt: { type: 'string', format: 'date-time' },
           updatedAt: { type: 'string', format: 'date-time' },
+          finishedAt: { type: 'string', format: 'date-time', nullable: true },
         },
         example: contentExample,
       },
-      ContentWithPreview: {
-        allOf: [
-          ref('Content'),
-          {
-            type: 'object',
-            properties: {
-              previewUrls: {
-                type: 'array',
-                items: { type: 'string' },
-                description:
-                  'Relative URLs for image previews. Render directly against the API origin.',
-              },
-              mdContent: { type: 'string', description: 'Raw markdown from content.md.' },
-              publishLogs: { type: 'array', items: ref('PublishLog') },
-            },
-          },
-        ],
+      PublishPlanStatus: {
+        type: 'string',
+        enum: ['PENDING', 'PUBLISHING', 'DONE', 'FAILED'],
       },
-      ContentListResponse: {
-        allOf: [
-          envelope({ type: 'array', items: ref('Content') }),
-          {
-            type: 'object',
-            properties: { pagination: ref('Pagination') },
-          },
-        ],
+      PublishPlan: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          contentId: { type: 'string' },
+          platform: ref('Platform'),
+          accountId: { type: 'string' },
+          title: { type: 'string' },
+          scheduledAt: { type: 'string', format: 'date-time', nullable: true },
+          status: ref('PublishPlanStatus'),
+          errorMessage: { type: 'string' },
+          errorCode: { type: 'string' },
+          externalTaskId: { type: 'string' },
+          publishedUrl: { type: 'string' },
+          createdAt: { type: 'string', format: 'date-time' },
+          updatedAt: { type: 'string', format: 'date-time' },
+          finishedAt: { type: 'string', format: 'date-time', nullable: true },
+        },
       },
-      ReviewContentRequest: objectSchema({
-        reviewedBy: { type: 'string' },
-        note: { type: 'string' },
-      }),
-      PublishContentRequest: objectSchema(
+      ApproveContentRequest: objectSchema(
         {
-          platform: platformSchema,
-          accountId: {
+          platform: ref('Platform'),
+          accountId: { type: 'string' },
+          title: { type: 'string', description: 'Platform-specific title override.' },
+          reviewedBy: { type: 'string' },
+          note: { type: 'string' },
+          scheduledAt: {
             type: 'string',
-            description:
-              'Optional. If omitted, the backend falls back to its default account slot.',
+            format: 'date-time',
+            description: 'ISO 8601, for scheduled publish.',
           },
         },
-        ['platform']
+        ['platform', 'accountId']
       ),
-      MoveToPublishedRequest: objectSchema({ platform: platformSchema }, ['platform']),
       PublishLog: {
         type: 'object',
         properties: {
@@ -1236,30 +1211,30 @@ export const openApiDocument = {
         operationId: 'listContents',
         parameters: [
           queryParam('status', contentStatusSchema, 'Filter by content workflow status.'),
-          queryParam(
-            'type',
-            { type: 'string', enum: ['IMAGE', 'VIDEO', 'MIXED'] },
-            'Filter by media type.'
-          ),
-          queryParam('category', { type: 'string' }, 'Filter by category parsed from metadata.'),
-          queryParam('search', { type: 'string' }, 'Search title, description, or tags.'),
+          queryParam('search', { type: 'string' }, 'Search title.'),
           queryParam('page', { type: 'number', default: 1, minimum: 1 }, '1-based page number.'),
           queryParam('limit', { type: 'number', default: 20, minimum: 1 }, 'Page size.'),
         ],
         responses: {
-          200: {
-            description: 'Content list with pagination.',
-            content: jsonContent(ref('ContentListResponse'), {
+          200: jsonResponse(
+            'Content list',
+            {
+              type: 'object',
+              properties: {
+                items: { type: 'array', items: ref('Content') },
+                total: { type: 'integer' },
+              },
+            },
+            {
               success: true,
-              data: [contentExample],
-              pagination: { total: 1, page: 1, limit: 20, totalPages: 1 },
-            }),
-          },
+              data: { items: [contentExample], total: 1 },
+            }
+          ),
         },
         'x-ui': {
           view: 'content-list',
-          listColumns: ['title', 'type', 'status', 'category', 'tags', 'createdAt', 'publishCount'],
-          filters: ['status', 'type', 'category', 'search'],
+          listColumns: ['title', 'status', 'createdAt'],
+          filters: ['status', 'search'],
           primaryActions: ['scanInbox', 'openDetail'],
         },
       },
@@ -1268,30 +1243,26 @@ export const openApiDocument = {
       get: {
         tags: ['Contents'],
         summary: 'Get content detail',
-        description:
-          'Returns content metadata, preview URLs, markdown body, and recent publish logs for a detail/review page.',
+        description: 'Returns content metadata and its publish plans for a detail/review page.',
         operationId: 'getContentDetail',
         parameters: [pathParam('id', 'Content id.')],
         responses: {
-          200: jsonResponse('Content detail', ref('ContentWithPreview'), {
-            success: true,
-            data: {
-              ...contentExample,
-              previewUrls: ['/api/contents/content-001/files/01.jpg'],
-              mdContent: '# 今天的穿搭分享\n\n上衣是...',
-            },
-          }),
+          200: jsonResponse(
+            'Content detail',
+            objectSchema({
+              content: ref('Content'),
+              publishPlans: { type: 'array', items: ref('PublishPlan') },
+            }),
+            {
+              success: true,
+              data: { content: contentExample, publishPlans: [] },
+            }
+          ),
         },
         'x-ui': {
           view: 'content-detail',
-          dataDependencies: ['GET /api/accounts', 'GET /api/publish-status/content/{contentId}'],
-          sections: [
-            'preview-gallery',
-            'metadata',
-            'markdown',
-            'review-actions',
-            'publish-actions',
-          ],
+          dataDependencies: ['GET /api/accounts'],
+          sections: ['metadata', 'publish-plans', 'review-actions'],
         },
       },
     },
@@ -1317,23 +1288,50 @@ export const openApiDocument = {
     '/api/contents/{id}/approve': {
       post: {
         tags: ['Contents'],
-        summary: 'Approve content',
+        summary: 'Approve content and create publish plan',
         description:
-          'Marks PENDING content as APPROVED and moves its directory from inbox to approved. Enable from PENDING only.',
+          'Marks PENDING content as APPROVED, creates a PublishPlan for the specified platform/account. Enable from PENDING only.',
         operationId: 'approveContent',
         parameters: [pathParam('id', 'Content id.')],
-        requestBody: requestBody(ref('ReviewContentRequest'), {
+        requestBody: requestBody(ref('ApproveContentRequest'), {
+          platform: 'xiaohongshu',
+          accountId: 'account-001',
+          title: '平台专用标题',
           reviewedBy: 'editor',
           note: 'Ready to publish',
+          scheduledAt: '2026-05-18T09:00:00+08:00',
         }),
         responses: {
-          200: jsonResponse('Approve result', ref('Content'), {
-            success: true,
-            data: contentExample,
-            message: 'Content approved successfully',
-          }),
+          200: jsonResponse(
+            'Approve result',
+            objectSchema({
+              content: ref('Content'),
+              plan: ref('PublishPlan'),
+            }),
+            {
+              success: true,
+              data: {
+                content: contentExample,
+                plan: {
+                  id: 'plan-001',
+                  contentId: 'content-001',
+                  platform: 'xiaohongshu',
+                  accountId: 'account-001',
+                  status: 'PENDING',
+                  createdAt: '2026-05-17T00:00:00.000Z',
+                  updatedAt: '2026-05-17T00:00:00.000Z',
+                },
+              },
+              message: 'Content approved and publish plan created',
+            }
+          ),
         },
-        'x-ui': { action: 'approve', visibleWhen: { status: 'PENDING' }, confirm: true },
+        'x-ui': {
+          action: 'approve',
+          visibleWhen: { status: 'PENDING' },
+          confirm: true,
+          formFields: ['platform', 'accountId', 'title', 'scheduledAt'],
+        },
       },
     },
     '/api/contents/{id}/reject': {
@@ -1344,10 +1342,16 @@ export const openApiDocument = {
           'Marks PENDING content as REJECTED. The file directory is not moved by this action.',
         operationId: 'rejectContent',
         parameters: [pathParam('id', 'Content id.')],
-        requestBody: requestBody(ref('ReviewContentRequest'), {
-          reviewedBy: 'editor',
-          note: 'Needs rewrite',
-        }),
+        requestBody: requestBody(
+          objectSchema({
+            reviewedBy: { type: 'string' },
+            note: { type: 'string' },
+          }),
+          {
+            reviewedBy: 'editor',
+            note: 'Needs rewrite',
+          }
+        ),
         responses: { 200: jsonResponse('Reject result', ref('Content')) },
         'x-ui': { action: 'reject', visibleWhen: { status: 'PENDING' }, confirm: true },
       },
@@ -1365,45 +1369,6 @@ export const openApiDocument = {
           }),
         },
         'x-ui': { action: 'refresh-imports', placement: 'content-list-toolbar' },
-      },
-    },
-    '/api/contents/{id}/publish': {
-      post: {
-        tags: ['Contents'],
-        summary: 'Queue approved content for publishing',
-        description:
-          'Preferred publish path for UI when publishing reviewed content. Requires content APPROVED, active account, supported platform, and configured cookies. Creates PublishLog and queues BullMQ job.',
-        operationId: 'publishApprovedContent',
-        parameters: [pathParam('id', 'Content id.')],
-        requestBody: requestBody(ref('PublishContentRequest'), {
-          platform: 'xiaohongshu',
-          accountId: 'account-001',
-        }),
-        responses: {
-          200: jsonResponse('Publish log and queue job', ref('PublishLog'), {
-            success: true,
-            data: { ...publishLogExample, jobId: 'job-001' },
-            message: 'Content queued for publishing',
-          }),
-        },
-        'x-ui': {
-          action: 'publish',
-          visibleWhen: { status: 'APPROVED' },
-          formFields: ['platform', 'accountId'],
-          postSubmitNavigation: '/publish-status',
-        },
-      },
-    },
-    '/api/contents/{id}/move-to-published': {
-      post: {
-        tags: ['Contents'],
-        summary: 'Move content to published',
-        description: `Manual compensation endpoint. Moves the content directory to \${CONTENT_DIR}/published/{platform} and marks content PUBLISHED. Normal successful publish callbacks already do this.`,
-        operationId: 'moveContentToPublished',
-        parameters: [pathParam('id', 'Content id.')],
-        requestBody: requestBody(ref('MoveToPublishedRequest'), { platform: 'xiaohongshu' }),
-        responses: { 200: jsonResponse('Move result', ref('Content')) },
-        'x-ui': { action: 'manual-compensation', danger: true, adminOnly: true },
       },
     },
 
@@ -1681,55 +1646,6 @@ export const openApiDocument = {
           }),
         },
         'x-ui': { action: 'retry', visibleWhen: { status: 'FAILED' }, confirm: true },
-      },
-    },
-
-    '/api/publish': {
-      post: {
-        tags: ['Publish'],
-        summary: 'Create generic publish job',
-        description:
-          'Low-level Publisher Framework entrypoint. For reviewed content, UI should usually prefer /api/contents/{id}/publish so Content and PublishLog stay linked.',
-        operationId: 'createGenericPublishJob',
-        requestBody: requestBody(genericPublishRequestSchema, {
-          platform: 'xiaohongshu',
-          accountId: 'account-001',
-          accountName: 'xhs-1',
-          action: 'publish',
-          payload: { title: '标题', description: '正文', images: ['/data/01.jpg'], tags: ['穿搭'] },
-        }),
-        responses: {
-          200: jsonResponse('Queued job', ref('QueuedJob'), queuedJobExample),
-          400: errorResponse('Missing routing fields', {
-            success: false,
-            error: 'platform, accountId, action required',
-          }),
-        },
-        'x-ui': { advanced: true, form: 'generic-publish-job' },
-      },
-    },
-    '/api/publish/progress': {
-      get: {
-        tags: ['Publish'],
-        summary: 'Server-sent publish progress stream',
-        description:
-          'SSE stream for live task progress. Render as a console/timeline and reconnect on network drop.',
-        operationId: 'streamPublishProgress',
-        responses: { 200: { description: 'SSE progress stream', content: textEventStreamContent } },
-        'x-ui': { realtime: true, transport: 'sse', eventSchema: 'ProgressEvent' },
-      },
-    },
-    '/api/publish/{jobId}': {
-      get: {
-        tags: ['Publish'],
-        summary: 'Get generic publish job state',
-        description: 'Returns BullMQ state for a queued generic publish job.',
-        operationId: 'getPublishJobState',
-        parameters: [pathParam('jobId', 'Queue job id.')],
-        responses: {
-          200: jsonResponse('Queue state', ref('QueueState')),
-          404: errorResponse('Job not found'),
-        },
       },
     },
 
@@ -2040,6 +1956,70 @@ export const openApiDocument = {
           },
         },
         'x-ui': { realtime: true, transport: 'websocket', messageSchema: 'WebSocketMessage' },
+      },
+    },
+
+    '/api/publish-plans': {
+      get: {
+        tags: ['PublishStatus'],
+        summary: 'List publish plans',
+        description:
+          'List PublishPlan records. Use for monitoring plan status across all contents.',
+        operationId: 'listPublishPlans',
+        parameters: [
+          queryParam('contentId', { type: 'string' }, 'Filter by content.'),
+          queryParam('platform', platformSchema, 'Filter by platform.'),
+          queryParam(
+            'status',
+            { type: 'string', enum: ['PENDING', 'PUBLISHING', 'DONE', 'FAILED'] },
+            'Filter by plan status.'
+          ),
+          queryParam('limit', { type: 'number', default: 20, minimum: 1 }, 'Page size.'),
+        ],
+        responses: {
+          200: jsonResponse(
+            'Publish plan list',
+            { type: 'array', items: ref('PublishPlan') },
+            { success: true, data: [] }
+          ),
+        },
+        'x-ui': {
+          view: 'publish-plan-list',
+          listColumns: ['contentId', 'platform', 'accountId', 'status', 'createdAt'],
+          filters: ['contentId', 'platform', 'status'],
+        },
+      },
+    },
+    '/api/publish-plans/{id}': {
+      get: {
+        tags: ['PublishStatus'],
+        summary: 'Get publish plan detail',
+        description: 'Returns a single PublishPlan with full detail.',
+        operationId: 'getPublishPlanDetail',
+        parameters: [pathParam('id', 'PublishPlan id.')],
+        responses: {
+          200: jsonResponse('Publish plan detail', ref('PublishPlan')),
+        },
+      },
+    },
+    '/api/contents/{id}/publish-plans': {
+      get: {
+        tags: ['PublishStatus'],
+        summary: 'List publish plans for a content',
+        description: 'Returns all PublishPlans for a specific content item.',
+        operationId: 'listContentPublishPlans',
+        parameters: [pathParam('id', 'Content id.')],
+        responses: {
+          200: jsonResponse(
+            'Content publish plans',
+            { type: 'array', items: ref('PublishPlan') },
+            { success: true, data: [] }
+          ),
+        },
+        'x-ui': {
+          view: 'content-publish-plans',
+          sections: ['plan-list', 'plan-detail'],
+        },
       },
     },
   },

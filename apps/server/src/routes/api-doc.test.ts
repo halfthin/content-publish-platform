@@ -29,15 +29,15 @@ describe('api documentation routes', () => {
     expect(spec.info.description).toContain('EXPOSE_DOCS');
     expect(spec.info.description).toContain('RUN_REAL_XHS_TESTS');
     expect(
-      spec.paths['/api/publish'].post.requestBody.content['application/json'].schema
+      spec.paths['/api/contents/{id}/approve'].post.requestBody.content['application/json'].schema
     ).toMatchObject({
-      required: ['platform', 'accountId', 'action'],
-      properties: {
-        accountName: { type: 'string' },
-        action: { type: 'string' },
-        payload: { type: 'object', additionalProperties: true },
-      },
+      $ref: '#/components/schemas/ApproveContentRequest',
     });
+    const approveSchema = spec.components.schemas.ApproveContentRequest;
+    expect(approveSchema.required).toEqual(['platform', 'accountId']);
+    expect(approveSchema.properties.platform).toMatchObject({});
+    expect(approveSchema.properties.accountId).toMatchObject({ type: 'string' });
+    expect(approveSchema.properties.title).toMatchObject({ type: 'string' });
     expect(
       spec.paths['/api/xhs/publish'].post.requestBody.content['application/json'].schema.properties
     ).toMatchObject({
@@ -70,9 +70,12 @@ describe('api documentation routes', () => {
       view: 'content-list',
       primaryActions: ['scanInbox', 'openDetail'],
     });
-    expect(spec.paths['/api/contents/{id}/publish'].post['x-ui']).toMatchObject({
-      action: 'publish',
-      visibleWhen: { status: 'APPROVED' },
+    expect(spec.paths['/api/contents/{id}/approve'].post['x-ui']).toMatchObject({
+      action: 'approve',
+      visibleWhen: { status: 'PENDING' },
+    });
+    expect(spec.paths['/api/contents/{id}/publish-plans'].get['x-ui']).toMatchObject({
+      view: 'content-publish-plans',
     });
   });
 
@@ -90,17 +93,15 @@ describe('api documentation routes', () => {
     ]);
     expect(uiContract.workflows.reviewAndPublish.steps).toContainEqual(
       expect.objectContaining({
-        id: 'queue-publish',
-        endpoint: 'POST /api/contents/{id}/publish',
+        id: 'monitor-plan',
+        endpoint: 'GET /api/contents/{id}/publish-plans',
       })
     );
     expect(uiContract.entityStates.content.transitions.APPROVED.allowedActions).toContain(
-      'publish'
+      'approveMore'
     );
-    expect(uiContract.formContracts.publishApprovedContent.fields.accountId.requiredInUi).toBe(
-      true
-    );
-    expect(uiContract.realtime.sse.endpoint).toBe('GET /api/publish/progress');
+    expect(uiContract.formContracts.approveContent.fields.accountId.required).toBe(true);
+    expect(uiContract.realtime.sse.endpoint).toContain('ht-queue SSE endpoint');
     expect(uiContract.auth.production.publicRoutes).toContain('/ready');
     expect(uiContract.contentSource).toMatchObject({
       baseDirConfigurable: true,

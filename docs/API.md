@@ -234,47 +234,6 @@ Base：`/api/contents`
 
 `CONTENT_DIR` 可配置；当前实现固定使用其中的 `inbox` 子目录作为待审核入口，`approved` 与 `published` 也基于同一个基目录。
 
-### POST `/api/contents/:id/publish`
-
-把已审核内容加入发布队列。此接口会校验内容状态、账号状态、平台和 Cookie，并创建 `PublishLog`。
-
-**Body**
-
-```json
-{
-  "platform": "xiaohongshu",
-  "accountId": "account-id"
-}
-```
-
-`accountId` 当前实现是可选的；如果不传，会回退到内部默认账号位。前端仍建议显式选择账号，以免误发。
-
-**响应**
-
-```json
-{
-  "success": true,
-  "data": {
-    "id": "publish-log-id",
-    "jobId": "queue-job-id",
-    "status": "QUEUED"
-  },
-  "message": "Content queued for publishing"
-}
-```
-
-### POST `/api/contents/:id/move-to-published`
-
-手动移动内容到 published 目录，并把内容状态更新为 `PUBLISHED`。
-
-**Body**
-
-```json
-{
-  "platform": "xiaohongshu"
-}
-```
-
 ---
 
 ## 4. 账号 API
@@ -448,49 +407,7 @@ Base：`/api/publish-status`
 
 ---
 
-## 6. 通用发布 API（Publisher Framework）
-
-Base：`/api/publish`
-
-> 这是本分支新增的通用发布入口，目标是统一后续平台接入。当前队列负载仍兼容旧 `PublishJobData`，`accountName`、`action` 和 XHS MCP 可选发布字段会贯穿到队列负载。
-
-### POST `/api/publish`
-
-创建通用发布任务并入队。
-
-**Body**
-
-```json
-{
-  "platform": "xiaohongshu",
-  "accountId": "account-id",
-  "accountName": "xhs-1",
-  "action": "publish",
-  "payload": {
-    "title": "标题",
-    "description": "正文",
-    "images": ["/container/path/1.jpg"],
-    "tags": ["tag1"]
-  }
-}
-```
-
-**必填**：`platform`、`accountId`、`action`。  
-**响应**
-
-```json
-{
-  "success": true,
-  "data": {
-    "jobId": "queue-job-id",
-    "status": "QUEUED"
-  }
-}
-```
-
----
-
-## 7. 小红书 XHS MCP 直连 API
+## 6. 小红书 XHS MCP 直连 API
 
 Base：`/api/xhs`
 
@@ -583,7 +500,7 @@ Base：`/api/xhs`
 
 ---
 
-## 8. 素材库 API
+## 7. 素材库 API
 
 Base：`/api/media`
 
@@ -669,7 +586,7 @@ Base：`/api/media`
 ---
 
 
-## 9. Webhook API
+## 8. Webhook API
 
 Base：`/api/webhook`
 
@@ -754,7 +671,7 @@ Content-Type: application/json
 
 ---
 
-## 10. WebSocket
+## 9. WebSocket
 
 ### WS `/ws`
 
@@ -773,7 +690,7 @@ Content-Type: application/json
 ```
 ---
 
-## 11. 常用 Smoke Test
+## 10. 常用 Smoke Test
 
 生产管理 API 需要 `API_AUTH_TOKEN`；以下命令默认不触发第三方发布。
 
@@ -807,7 +724,7 @@ API_BASE_URL=http://localhost:50000 API_AUTH_TOKEN=<token> EXPOSE_DOCS=false bun
 
 ---
 
-## 12. 已知限制 / 注意事项
+## 11. 已知限制 / 注意事项
 
 - `CONTENT_DIR` 可配置，但 inbox/approved/published 子目录名目前是约定固定的。
 - `/api/publish` 与 `/api/xhs/publish*` 当前会入队到现有 BullMQ 发布队列；完整发布依赖 Redis、Postgres、有效账号、有效 Cookie 或 xhs-mcp 登录态。
@@ -817,7 +734,7 @@ API_BASE_URL=http://localhost:50000 API_AUTH_TOKEN=<token> EXPOSE_DOCS=false bun
 - `GET /api/xhs/login/*` 与 `POST /api/xhs/login/refresh` 需要先配置并启动 `XHS_MCP_INSTANCES` 对应实例；未配置时应返回 `404`，不应触发真实外部请求。
 - 真实外部发布会对第三方平台产生副作用，合并前建议只做测试账号/草稿内容验证。
 
-## 13. 当前验证状态（2026-05-19）
+## 12. 当前验证状态（2026-05-19）
 
 已完成并同步到当前分支的默认门禁：
 
