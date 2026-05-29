@@ -61,7 +61,6 @@ model Account {
   updatedAt       DateTime      @updatedAt
   
   publishLogs     PublishLog[]
-  scheduledJobs   ScheduledJob[]
 
   @@index([platform, status])
   @@index([groupId])
@@ -83,44 +82,43 @@ enum LoginStatus {
 
 // 内容
 model Content {
-  id          String        @id @default(uuid())
-  title       String
-  description String?
-  type        ContentType   // IMAGE, VIDEO, MIXED
-  status      ContentStatus @default(PENDING)
-  
-  // 文件路径
-  basePath    String        // 内容根目录（相对路径）
-  images      String[]      // 图片路径数组
-  video       String?       // 视频路径
-  mdFile      String        // markdown 文案路径
-  
-  // 审核信息
-  reviewedBy  String?       // 审核人
-  reviewedAt  DateTime?
-  reviewNote  String?       // 审核备注
-  
-  // 标签和分类
-  tags        String[]
-  category    String?
-  
-  // 统计
-  publishCount Int          @default(0) // 发布次数（多账号）
-  
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  
-  publishLogs PublishLog[]
-  scheduledJobs ScheduledJob[]
+  id              String        @id           // UUID v7
+  relativePath    String        @unique       // 如 inbox/笔记12/
+  title           String
+  status          ContentStatus @default(PENDING)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  finishedAt      DateTime?
 
-  @@index([status])
-  @@index([createdAt])
+  publishLogs     PublishLog[]
+  publishPlans    PublishPlan[]
+
+  @@index([status, createdAt])
+  @@map("contents")
 }
 
-enum ContentType {
-  IMAGE
-  VIDEO
-  MIXED
+model PublishPlan {
+  id              String        @id @default(cuid())
+  contentId       String
+  platform        String
+  accountId       String
+  title           String?
+  scheduledAt     DateTime?
+  status          String        @default("PENDING")  // PENDING → PUBLISHING → DONE / FAILED
+  errorMessage    String?
+  errorCode       String?
+  externalTaskId  String?
+  publishedUrl    String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  finishedAt      DateTime?
+
+  content         Content       @relation(fields: [contentId], references: [id])
+
+  @@index([contentId])
+  @@index([contentId, status])
+  @@index([status])
+  @@map("publish_plans")
 }
 
 enum ContentStatus {
@@ -137,6 +135,7 @@ model PublishLog {
   id          String        @id @default(uuid())
   contentId   String
   content     Content       @relation(fields: [contentId], references: [id])
+  publishPlanId String?
   accountId   String
   account     Account       @relation(fields: [accountId], references: [id])
   jobId       String?
@@ -178,38 +177,6 @@ enum PublishStatus {
   FAILED            // 失败
   CANCELLED         // 已取消
   RETRYING          // 重试中
-}
-
-// 定时任务
-model ScheduledJob {
-  id          String            @id @default(uuid())
-  contentId   String
-  content     Content           @relation(fields: [contentId], references: [id])
-  accountId   String
-  account     Account           @relation(fields: [accountId], references: [id])
-  
-  scheduledAt DateTime          // 计划执行时间
-  status      ScheduledStatus   @default(SCHEDULED)
-  bullJobId   String?           // BullMQ job ID
-  
-  // 执行结果
-  executedAt  DateTime?
-  result      Json?             // 执行结果
-  
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-
-  @@index([scheduledAt])
-  @@index([status])
-}
-
-enum ScheduledStatus {
-  SCHEDULED   // 已计划
-  QUEUED      // 已入队
-  EXECUTING   // 执行中
-  COMPLETED   // 完成
-  CANCELLED   // 已取消
-  FAILED      // 失败
 }
 
 // 系统配置
