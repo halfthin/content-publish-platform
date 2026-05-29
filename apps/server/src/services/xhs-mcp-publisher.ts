@@ -60,7 +60,7 @@ class XhsMcpClient {
     }
   }
 
-  async callTool<T>(toolName: string, args: Record<string, unknown> = {}): Promise<T> {
+  async callTool(toolName: string, args: Record<string, unknown> = {}): Promise<unknown> {
     await this.initialize();
     const res = await this.jsonRpc('tools/call', { name: toolName, arguments: args });
 
@@ -73,7 +73,7 @@ class XhsMcpClient {
       throw new JsonRpcError(body.error.message || 'MCP error', body.error.code, body.error.data);
     }
 
-    return body.result?.content as T;
+    return body.result;
   }
 }
 
@@ -97,15 +97,24 @@ export class XhsMcpPublisher implements Publisher {
         const { title, content, images, tags, scheduleAt, visibility, isOriginal, products } =
           payload as Record<string, unknown>;
 
-        const result = await this.client.callTool<{ noteId?: string; noteUrl?: string }>(
-          'publish_content',
-          { title, content, images, tags, scheduleAt, visibility, isOriginal, products }
-        );
+        const result = (await this.client.callTool('publish_content', {
+          title,
+          content,
+          images,
+          tags,
+          scheduleAt,
+          visibility,
+          isOriginal,
+          products,
+        })) as { content?: Array<{ type: string; text?: string }> };
+
+        const text = result?.content?.find((c) => c.type === 'text')?.text || '{}';
+        const parsed = JSON.parse(text) as { noteId?: string; noteUrl?: string };
 
         return {
           success: true,
-          externalId: result.noteId,
-          url: result.noteUrl,
+          externalId: parsed.noteId,
+          url: parsed.noteUrl,
         };
       }
 
@@ -115,15 +124,22 @@ export class XhsMcpPublisher implements Publisher {
           unknown
         >;
 
-        const result = await this.client.callTool<{ noteId?: string; noteUrl?: string }>(
-          'publish_with_video',
-          { title, content, video, tags, visibility, products }
-        );
+        const result = (await this.client.callTool('publish_with_video', {
+          title,
+          content,
+          video,
+          tags,
+          visibility,
+          products,
+        })) as { content?: Array<{ type: string; text?: string }> };
+
+        const text = result?.content?.find((c) => c.type === 'text')?.text || '{}';
+        const parsed = JSON.parse(text) as { noteId?: string; noteUrl?: string };
 
         return {
           success: true,
-          externalId: result.noteId,
-          url: result.noteUrl,
+          externalId: parsed.noteId,
+          url: parsed.noteUrl,
         };
       }
 
@@ -134,21 +150,32 @@ export class XhsMcpPublisher implements Publisher {
 
   async checkAuth(): Promise<AuthStatus> {
     try {
-      const result = await this.client.callTool<{ isLogin?: boolean }>('check_login_status');
-      return { loggedIn: result?.isLogin ?? false };
+      const result = (await this.client.callTool('check_login_status')) as {
+        content?: Array<{ type: string; text?: string }>;
+      };
+      const text = result?.content?.find((c) => c.type === 'text')?.text || '';
+      return { loggedIn: text.includes('true') || text.includes('logged_in') };
     } catch {
       return { loggedIn: false, message: 'MCP container unreachable' };
     }
   }
 
   async startAuth(): Promise<AuthInitResult> {
-    const result = await this.client.callTool<{ qrcode?: string; expiresIn?: number }>(
-      'get_login_qrcode'
-    );
+    const result = (await this.client.callTool('get_login_qrcode')) as {
+      content?: Array<{ type: string; text?: string; mimeType?: string; data?: string }>;
+    };
+    const image = result?.content?.find((c) => c.type === 'image');
+    const data = image?.data
+      ? `data:${image.mimeType || 'image/png'};base64,${image.data}`
+      : undefined;
+    const text = result?.content?.find((c) => c.type === 'text')?.text || '';
+    const match = text.match(/(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/);
+    const expiresIn = match ? (new Date(match[1]).getTime() - Date.now()) / 1000 : undefined;
+
     return {
       type: 'qrcode',
-      data: result.qrcode,
-      expiresIn: result.expiresIn,
+      data,
+      expiresIn: expiresIn ? Math.max(Math.round(expiresIn), 60) : 300,
     };
   }
 
