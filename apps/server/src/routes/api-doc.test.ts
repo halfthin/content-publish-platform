@@ -24,7 +24,7 @@ describe('api documentation routes', () => {
     expect(res.status).toBe(200);
     expect(spec.openapi).toStartWith('3.');
     expect(spec.info.title).toBe('Content Publish Platform API');
-    expect(spec.paths['/ready'].get).toBeDefined();
+    expect(spec.paths['/api/ready'].get).toBeDefined();
     expect(spec.components.securitySchemes.bearerAuth).toBeDefined();
     expect(spec.info.description).toContain('EXPOSE_DOCS');
     expect(spec.info.description).toContain('RUN_REAL_XHS_TESTS');
@@ -102,7 +102,7 @@ describe('api documentation routes', () => {
     );
     expect(uiContract.formContracts.approveContent.fields.accountId.required).toBe(true);
     expect(uiContract.realtime.sse.endpoint).toContain('ht-queue SSE endpoint');
-    expect(uiContract.auth.production.publicRoutes).toContain('/ready');
+    expect(uiContract.auth.production.publicRoutes).toContain('/api/ready');
     expect(uiContract.contentSource).toMatchObject({
       baseDirConfigurable: true,
       fixedSubdirectories: ['inbox', 'approved', 'published'],

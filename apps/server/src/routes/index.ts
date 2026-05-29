@@ -9,6 +9,7 @@ import { setupHealthRoutes } from './health';
 import { setupMediaRoutes } from './media';
 import { setupPublishRoutes } from './publish';
 import { setupPublishStatusRoutes } from './publish-status';
+import { setupPublishersRoutes } from './publishers';
 import { setupXhsCallbackRoutes } from './queues/xhs.callback';
 import { setupWebhookRoutes } from './webhook';
 import { setupXhsRoutes } from './xhs';
@@ -63,6 +64,8 @@ export function setupRoutes() {
       .use(setupMediaRoutes())
       // 通用发布 API
       .use(setupPublishRoutes())
+      // 发布实例发现 API
+      .use(setupPublishersRoutes())
       // 小红书 MCP 直连 API
       .use(setupXhsRoutes())
       .onRequest(({ path, method }) => {

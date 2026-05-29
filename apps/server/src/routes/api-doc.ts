@@ -670,7 +670,7 @@ export const openApiDocument = {
     auth: {
       production: {
         header: 'Authorization: Bearer <API_AUTH_TOKEN>',
-        publicRoutes: ['/', '/health', '/ready'],
+        publicRoutes: ['/', '/api/health', '/api/ready'],
         webhookRoutesUseDifferentToken: true,
         docsExposureFlag: 'EXPOSE_DOCS',
       },
@@ -1168,7 +1168,7 @@ export const openApiDocument = {
         responses: { 200: directJsonResponse('API metadata', ref('RootInfo'), rootInfoExample) },
       },
     },
-    '/health': {
+    '/api/health': {
       get: {
         tags: ['Health'],
         summary: 'Health check',
@@ -1177,7 +1177,7 @@ export const openApiDocument = {
         responses: { 200: directJsonResponse('Health status', ref('HealthCheck'), healthExample) },
       },
     },
-    '/ready': {
+    '/api/ready': {
       get: {
         tags: ['Health'],
         summary: 'Readiness check',
