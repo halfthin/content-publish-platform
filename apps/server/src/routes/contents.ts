@@ -4,24 +4,16 @@ import { Elysia, t } from 'elysia';
 import { fileTypeFromBuffer } from 'file-type';
 import { createLogger } from '../config/logger';
 import { prisma } from '../config/prisma';
-import { addPublishJob } from '../queues/publish-queue';
 import {
   approveContent,
   getContentById,
   getContents,
-  moveToApproved,
   moveToPublished,
   rejectContent,
   scanInbox,
 } from '../services/content.service';
 
 const logger = createLogger('contents-route');
-
-function isSupportedPublishPlatform(
-  platform: string
-): platform is 'xiaohongshu' | 'weibo' | 'douyin' | 'bilibili' | 'wechat' {
-  return ['xiaohongshu', 'weibo', 'douyin', 'bilibili', 'wechat'].includes(platform);
-}
 
 /**
  * 安全路径处理 - 防止路径遍历攻击
@@ -49,8 +41,6 @@ export function setupContentsRoutes() {
         async ({ query }) => {
           const filter = {
             status: query.status,
-            type: query.type,
-            category: query.category,
             search: query.search,
             page: query.page ? parseInt(query.page, 10) : 1,
             limit: query.limit ? parseInt(query.limit, 10) : 20,
@@ -74,8 +64,6 @@ export function setupContentsRoutes() {
         {
           query: t.Object({
             status: t.Optional(t.String()),
-            type: t.Optional(t.String()),
-            category: t.Optional(t.String()),
             search: t.Optional(t.String()),
             page: t.Optional(t.Numeric()),
             limit: t.Optional(t.Numeric()),
@@ -232,39 +220,51 @@ export function setupContentsRoutes() {
         }
       )
 
-      // 审核通过
+      // 审核通过 → 创建发布计划并加入队列
       .post(
         '/:id/approve',
         async ({ params, body }) => {
           const { id } = params;
-          const { reviewedBy, note } = body;
+          const { platform, accountId, title, reviewedBy, note, scheduledAt } = body as Record<
+            string,
+            unknown
+          >;
+
+          if (!platform || !accountId) {
+            return { success: false, error: 'platform and accountId required' };
+          }
 
           try {
-            const content = await approveContent(id, reviewedBy || 'system', note);
+            const result = await approveContent(id, platform as string, accountId as string, {
+              title: title as string | undefined,
+              reviewedBy: reviewedBy as string | undefined,
+              note: note as string | undefined,
+              scheduledAt: scheduledAt as string | undefined,
+            });
 
-            if (!content) {
-              return {
-                success: false,
-                error: 'Content not found',
-              };
+            if (!result) {
+              return { success: false, error: 'Content not found' };
             }
 
-            // 移动到已批准目录
-            await moveToApproved(id);
-
-            logger.info('Content approved:', id);
+            // Enqueue to ht-queue
+            const { enqueuePublish } = await import('../services/queue-client');
+            await enqueuePublish(platform as string, {
+              contentId: id,
+              accountId: accountId as string,
+              platform: platform as string,
+              publishPlanId: result.plan.id,
+              action: 'publish',
+              content: { title: result.plan.title || result.content.title },
+            });
 
             return {
               success: true,
-              data: content,
-              message: 'Content approved successfully',
+              data: { content: result.content, plan: result.plan },
+              message: 'Content approved and queued for publishing',
             };
           } catch (error) {
             logger.error('Error approving content:', error);
-            return {
-              success: false,
-              error: 'Failed to approve content',
-            };
+            return { success: false, error: String(error) };
           }
         },
         {
@@ -272,8 +272,12 @@ export function setupContentsRoutes() {
             id: t.String(),
           }),
           body: t.Object({
+            platform: t.String({ description: '发布平台' }),
+            accountId: t.String({ description: '发布账号 ID' }),
+            title: t.Optional(t.String({ description: '平台专属标题' })),
             reviewedBy: t.Optional(t.String()),
             note: t.Optional(t.String()),
+            scheduledAt: t.Optional(t.String({ description: '定时发布时间 (ISO 8601)' })),
           }),
         }
       )
@@ -281,12 +285,11 @@ export function setupContentsRoutes() {
       // 审核拒绝
       .post(
         '/:id/reject',
-        async ({ params, body }) => {
+        async ({ params }) => {
           const { id } = params;
-          const { reviewedBy, note } = body;
 
           try {
-            const content = await rejectContent(id, reviewedBy || 'system', note);
+            const content = await rejectContent(id);
 
             if (!content) {
               return {
@@ -314,10 +317,6 @@ export function setupContentsRoutes() {
           params: t.Object({
             id: t.String(),
           }),
-          body: t.Object({
-            reviewedBy: t.Optional(t.String()),
-            note: t.Optional(t.String()),
-          }),
         }
       )
 
@@ -338,147 +337,14 @@ export function setupContentsRoutes() {
         }
       })
 
-      // 发布内容到指定平台
-      .post(
-        '/:id/publish',
-        async ({ params, body }) => {
-          const { id } = params;
-          const { platform, accountId } = body;
-
-          try {
-            // 1. 验证内容状态
-            const content = await getContentById(id);
-            if (!content) {
-              return {
-                success: false,
-                error: 'Content not found',
-              };
-            }
-
-            if (content.status !== 'APPROVED') {
-              return {
-                success: false,
-                error: 'Content must be approved before publishing',
-              };
-            }
-
-            // 2. 验证账号
-            const targetAccountId = accountId || 'default';
-            const account = await prisma.account.findUnique({
-              where: { id: targetAccountId },
-            });
-
-            if (!account) {
-              return {
-                success: false,
-                error: 'Account not found',
-              };
-            }
-
-            if (account.status !== 'ACTIVE') {
-              return {
-                success: false,
-                error: 'Account is not active',
-              };
-            }
-
-            if (!isSupportedPublishPlatform(platform)) {
-              return {
-                success: false,
-                error: 'Unsupported platform',
-              };
-            }
-
-            if (!account.encryptedCookies) {
-              return {
-                success: false,
-                error: 'Account has no cookies configured',
-              };
-            }
-
-            // 3. 创建发布日志
-            const publishLog = await prisma.publishLog.create({
-              data: {
-                contentId: id,
-                accountId: targetAccountId,
-                platform: platform || 'unknown',
-                status: 'QUEUED',
-              },
-            });
-
-            // 4. 添加到发布队列
-            const job = await addPublishJob(
-              {
-                contentId: id,
-                accountId: targetAccountId,
-                publishLogId: publishLog.id,
-                platform,
-                content: {
-                  title: content.title,
-                  description: content.description || '',
-                  images: content.images || [],
-                  video: content.video || undefined,
-                  tags: content.tags || [],
-                  basePath: content.basePath, // 添加: 传递 basePath
-                },
-              },
-              {
-                jobId: `${id}-${targetAccountId}-${Date.now()}`,
-              }
-            );
-
-            // 5. 更新内容状态
-            await prisma.publishLog.update({
-              where: { id: publishLog.id },
-              data: {
-                jobId: job.id,
-              },
-            });
-
-            await prisma.content.update({
-              where: { id },
-              data: { status: 'PUBLISHING' },
-            });
-
-            logger.info('Content queued for publishing', {
-              contentId: id,
-              platform,
-              jobId: job.id,
-            });
-
-            return {
-              success: true,
-              data: { ...publishLog, jobId: job.id },
-              message: 'Content queued for publishing',
-            };
-          } catch (error) {
-            logger.error('Error queuing content for publish:', error);
-            return {
-              success: false,
-              error: `Failed to queue content: ${error}`,
-            };
-          }
-        },
-        {
-          params: t.Object({
-            id: t.String(),
-          }),
-          body: t.Object({
-            platform: t.String(),
-            accountId: t.Optional(t.String()),
-          }),
-        }
-      )
-
       // 移动到已发布
       .post(
         '/:id/move-to-published',
-        async ({ params, body }) => {
+        async ({ params }) => {
           const { id } = params;
-          const { platform } = body;
 
           try {
-            await moveToPublished(id, platform);
+            await moveToPublished(id);
 
             const content = await prisma.content.update({
               where: { id },
@@ -503,9 +369,6 @@ export function setupContentsRoutes() {
         {
           params: t.Object({
             id: t.String(),
-          }),
-          body: t.Object({
-            platform: t.String(),
           }),
         }
       )

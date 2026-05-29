@@ -58,15 +58,6 @@ function validateCallbackToken(authHeader: string | undefined, expectedToken: st
   return token === expectedToken;
 }
 
-function normalizePublishPlatform(actionType: string | undefined): string | null {
-  if (!actionType) {
-    return null;
-  }
-
-  const [platform] = actionType.split('.');
-  return platform?.trim() || null;
-}
-
 function normalizeRoutePlatform(platform: string | undefined): string | null {
   if (!platform) {
     return null;
@@ -241,10 +232,6 @@ export function setupWebhookRoutes(options: SetupWebhookRoutesOptions = {}) {
             }
 
             const resolvedContentId = payload.refs?.contentId || publishLog.contentId;
-            const resolvedPlatform =
-              payload.target?.platform ||
-              normalizePublishPlatform(payload.actionType) ||
-              publishLog.platform;
 
             // 更新 PublishLog
             if (payload.status === 'success') {
@@ -273,7 +260,7 @@ export function setupWebhookRoutes(options: SetupWebhookRoutesOptions = {}) {
 
               // 移动到已发布目录
               try {
-                await moveContentToPublished(resolvedContentId, resolvedPlatform);
+                await moveContentToPublished(resolvedContentId);
               } catch (moveError) {
                 logger.warn('Failed to move to published directory', {
                   contentId: resolvedContentId,

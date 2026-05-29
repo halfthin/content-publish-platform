@@ -97,6 +97,13 @@ model Content {
   @@map("contents")
 }
 
+enum PlanStatus {
+  PENDING
+  PUBLISHING
+  DONE
+  FAILED
+}
+
 model PublishPlan {
   id              String        @id @default(cuid())
   contentId       String
@@ -104,7 +111,7 @@ model PublishPlan {
   accountId       String
   title           String?
   scheduledAt     DateTime?
-  status          String        @default("PENDING")  // PENDING → PUBLISHING → DONE / FAILED
+  status          PlanStatus    @default(PENDING)
   errorMessage    String?
   errorCode       String?
   externalTaskId  String?
@@ -115,7 +122,6 @@ model PublishPlan {
 
   content         Content       @relation(fields: [contentId], references: [id])
 
-  @@index([contentId])
   @@index([contentId, status])
   @@index([status])
   @@map("publish_plans")

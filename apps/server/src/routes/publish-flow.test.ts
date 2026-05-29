@@ -6,21 +6,19 @@ import { createInMemoryOpenClawCallbackEventDeduper } from '../services/openclaw
 const contentRecord = {
   id: 'content-001',
   title: '测试标题',
-  description: '测试正文',
-  type: 'IMAGE',
-  status: 'APPROVED',
-  basePath: '/tmp/content/approved/content-001',
-  images: ['/tmp/content/approved/content-001/1.png'],
-  video: null,
-  tags: ['测试'],
+  status: 'PENDING',
+  relativePath: 'inbox/content-001',
 };
 
-const accountRecord = {
-  id: 'account-001',
-  name: 'xhs-1',
-  platform: 'xiaohongshu',
-  status: 'ACTIVE',
-  encryptedCookies: 'encrypted-cookies',
+const approveResult = {
+  content: { ...contentRecord, status: 'APPROVED' },
+  plan: {
+    id: 'plan-001',
+    title: '测试标题',
+    platform: 'xiaohongshu',
+    accountId: 'account-001',
+    status: 'PENDING',
+  },
 };
 
 const publishLogRecord = {
@@ -32,7 +30,8 @@ const publishLogRecord = {
 };
 
 const contentFindUniqueMock = mock(async () => contentRecord);
-const accountFindUniqueMock = mock(async () => accountRecord);
+const accountFindUniqueMock = mock(async () => null);
+const accountUpdateMock = mock(async () => null);
 const publishLogCreateMock = mock(async () => publishLogRecord);
 const publishLogUpdateMock = mock(async (_args: unknown) => publishLogRecord);
 const contentUpdateMock = mock(async (_args: unknown) => ({
@@ -42,13 +41,13 @@ const contentUpdateMock = mock(async (_args: unknown) => ({
 const publishLogFindUniqueMock = mock(async () => publishLogRecord);
 const publishLogFindFirstMock = mock(async () => null);
 const publishLogFindManyMock = mock(async () => []);
-const addPublishJobMock = mock(async () => ({ id: 'job-001' }));
 const moveToPublishedMock = mock(async () => undefined);
+const enqueuePublishMock = mock(async () => ({ jobId: 'job-001', taskId: 'task-001' }));
 
 mock.module('../config/prisma', () => ({
   prisma: {
     content: { findUnique: contentFindUniqueMock, update: contentUpdateMock },
-    account: { findUnique: accountFindUniqueMock },
+    account: { findUnique: accountFindUniqueMock, update: accountUpdateMock },
     publishLog: {
       create: publishLogCreateMock,
       update: publishLogUpdateMock,
@@ -59,16 +58,15 @@ mock.module('../config/prisma', () => ({
   },
 }));
 
-mock.module('../queues/publish-queue', () => ({
-  addPublishJob: addPublishJobMock,
+mock.module('../services/queue-client', () => ({
+  enqueuePublish: enqueuePublishMock,
 }));
 
 mock.module('../services/content.service', () => ({
   getContentById: contentFindUniqueMock,
   moveToPublished: moveToPublishedMock,
-  approveContent: mock(async () => contentRecord),
+  approveContent: mock(async () => approveResult),
   getContents: mock(async () => ({ data: [], total: 0, page: 1, limit: 20, totalPages: 0 })),
-  moveToApproved: mock(async () => undefined),
   rejectContent: mock(async () => contentRecord),
   scanInbox: mock(async () => undefined),
 }));
@@ -85,14 +83,15 @@ describe('simulated publish flow', () => {
   beforeEach(() => {
     contentFindUniqueMock.mockClear();
     accountFindUniqueMock.mockClear();
+    accountUpdateMock.mockClear();
     publishLogCreateMock.mockClear();
     publishLogUpdateMock.mockClear();
     publishLogFindUniqueMock.mockClear();
     publishLogFindFirstMock.mockClear();
     publishLogFindManyMock.mockClear();
     contentUpdateMock.mockClear();
-    addPublishJobMock.mockClear();
     moveToPublishedMock.mockClear();
+    enqueuePublishMock.mockClear();
   });
 
   it('queues approved content and applies a success webhook callback', async () => {
@@ -118,23 +117,33 @@ describe('simulated publish flow', () => {
       })
     );
 
-    const publishRes = await app.handle(
-      new Request('http://localhost/api/contents/content-001/publish', {
+    const approveRes = await app.handle(
+      new Request('http://localhost/api/contents/content-001/approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ platform: 'xiaohongshu', accountId: 'account-001' }),
+        body: JSON.stringify({
+          platform: 'xiaohongshu',
+          accountId: 'account-001',
+          reviewedBy: 'test',
+        }),
       })
     );
-    const publishData = await publishRes.json();
+    const approveData = await approveRes.json();
 
-    expect(publishRes.status).toBe(200);
-    expect(publishData.success).toBe(true);
-    expect(publishLogCreateMock).toHaveBeenCalled();
-    expect(addPublishJobMock).toHaveBeenCalled();
-    expect(contentUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'content-001' },
-      data: { status: 'PUBLISHING' },
-    });
+    expect(approveRes.status).toBe(200);
+    expect(approveData.success).toBe(true);
+    expect(approveData.data.content).toBeDefined();
+    expect(approveData.data.plan).toBeDefined();
+    expect(enqueuePublishMock).toHaveBeenCalledWith(
+      'xiaohongshu',
+      expect.objectContaining({
+        contentId: 'content-001',
+        accountId: 'account-001',
+        platform: 'xiaohongshu',
+        publishPlanId: 'plan-001',
+        action: 'publish',
+      })
+    );
 
     const webhookRes = await app.handle(
       new Request('http://localhost/api/webhook/xhs/publish-result', {
@@ -175,6 +184,6 @@ describe('simulated publish flow', () => {
       where: { id: 'content-001' },
       data: { status: 'PUBLISHED', publishCount: { increment: 1 } },
     });
-    expect(moveToPublishedMock).toHaveBeenCalledWith('content-001', 'xiaohongshu');
+    expect(moveToPublishedMock).toHaveBeenCalledWith('content-001');
   });
 });

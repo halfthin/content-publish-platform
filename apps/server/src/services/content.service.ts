@@ -7,7 +7,7 @@ import { prisma } from '../config/prisma';
 const logger = createLogger('content-service');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const PROJECT_ROOT = resolve(__dirname, '../../..');
+const PROJECT_ROOT = resolve(__dirname, '../../../..');
 const CONTENT_BASE_DIR = process.env.CONTENT_DIR
   ? resolve(PROJECT_ROOT, process.env.CONTENT_DIR)
   : join(PROJECT_ROOT, 'content');
@@ -35,35 +35,40 @@ export async function scanInbox(): Promise<void> {
   const dirs = entries.filter((e) => e.isDirectory()).map((e) => e.name);
 
   for (const dirName of dirs) {
-    const dirPath = join(inboxDir, dirName);
-    const metaPath = join(dirPath, 'metadata.json');
-
-    let meta: Record<string, unknown> = {};
     try {
-      const raw = await fs.readFile(metaPath, 'utf-8');
-      meta = JSON.parse(raw);
-    } catch {
-      meta = { title: dirName };
+      const dirPath = join(inboxDir, dirName);
+      const metaPath = join(dirPath, 'metadata.json');
+
+      let meta: Record<string, unknown> = {};
+      try {
+        const raw = await fs.readFile(metaPath, 'utf-8');
+        meta = JSON.parse(raw);
+      } catch {
+        logger.warn('No valid metadata.json, creating default', { dirPath });
+        meta = { title: dirName };
+      }
+
+      // 已有有效 ID 且 DB 中存在该记录 → 跳过
+      if (meta.id) {
+        const existing = await prisma.content.findUnique({ where: { id: meta.id as string } });
+        if (existing) continue;
+      }
+
+      // 新内容：生成 ID，写入 metadata.json，创建 DB 记录
+      const id = (meta.id as string) || crypto.randomUUID();
+      const title = (meta.title as string) || dirName;
+      const relativePath = `inbox/${dirName}`;
+
+      await fs.writeFile(
+        metaPath,
+        JSON.stringify({ id, title, relativePath, createdAt: new Date().toISOString() }, null, 2)
+      );
+
+      await prisma.content.create({ data: { id, relativePath, title, status: 'PENDING' } });
+      logger.info('New content scanned', { id, title, relativePath });
+    } catch (e) {
+      logger.warn('Failed to scan directory', { dirName, error: String(e) });
     }
-
-    // 已有有效 ID 且 DB 中存在该记录 → 跳过
-    if (meta.id) {
-      const existing = await prisma.content.findUnique({ where: { id: meta.id as string } });
-      if (existing) continue;
-    }
-
-    // 新内容：生成 ID，写入 metadata.json，创建 DB 记录
-    const id = (meta.id as string) || crypto.randomUUID();
-    const title = (meta.title as string) || dirName;
-    const relativePath = `inbox/${dirName}`;
-
-    await fs.writeFile(
-      metaPath,
-      JSON.stringify({ id, title, relativePath, createdAt: new Date().toISOString() }, null, 2)
-    );
-
-    await prisma.content.create({ data: { id, relativePath, title, status: 'PENDING' } });
-    logger.info('New content scanned', { id, title, relativePath });
   }
 }
 

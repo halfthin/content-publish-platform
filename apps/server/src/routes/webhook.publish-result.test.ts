@@ -148,7 +148,7 @@ describe('publish result webhook routes', () => {
         publishCount: { increment: 1 },
       },
     });
-    expect(moveToPublishedMock).toHaveBeenCalledWith('content-001', 'xiaohongshu');
+    expect(moveToPublishedMock).toHaveBeenCalledWith('content-001');
   });
 
   it('continues to support legacy publish callbacks via contentId + accountId fallback', async () => {

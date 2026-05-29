@@ -10,6 +10,7 @@ const logger = createLogger('publish-queue');
 export interface PublishJobData {
   contentId: string;
   accountId: string;
+  publishPlanId?: string;
   publishLogId?: string;
   platform: 'xiaohongshu' | 'weibo' | 'douyin' | 'bilibili' | 'wechat';
   accountName?: string;

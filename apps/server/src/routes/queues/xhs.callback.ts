@@ -76,6 +76,7 @@ export function setupXhsCallbackRoutes() {
     let taskId = '';
     let contentId = '';
     let accountId = '';
+    let publishPlanId = '';
     let startTime = 0;
     let useFallback = false;
 
@@ -84,6 +85,7 @@ export function setupXhsCallbackRoutes() {
       taskId = data.taskId;
       contentId = data.contentId;
       accountId = data.accountId;
+      publishPlanId = data.publishPlanId || '';
       startTime = Date.now();
 
       if (!data?.taskId || !data?.contentId || !data?.accountId) {
@@ -98,16 +100,31 @@ export function setupXhsCallbackRoutes() {
         const result = await publishViaMcp(data, taskId, startTime, log);
         if (!result.success) throw new Error(result.error || 'MCP publish failed');
 
-        // 标记成功
+        // 标记 PublishLog 成功
         await prisma.publishLog.updateMany({
           where: { contentId, accountId },
           data: { status: 'SUCCESS', publishedUrl: result.publishedUrl, completedAt: new Date() },
         });
-        await moveToPublished(contentId, 'xiaohongshu');
-        await prisma.content.update({
-          where: { id: contentId },
-          data: { status: 'PUBLISHED', publishCount: { increment: 1 } },
+
+        // 标记 PublishPlan 完成
+        if (publishPlanId) {
+          await prisma.publishPlan.update({
+            where: { id: publishPlanId },
+            data: { status: 'DONE', publishedUrl: result.publishedUrl, finishedAt: new Date() },
+          });
+        }
+
+        // 检查是否所有发布计划都已完成
+        const remaining = await prisma.publishPlan.count({
+          where: { contentId, status: { notIn: ['DONE'] } },
         });
+        if (remaining === 0) {
+          await moveToPublished(contentId);
+          await prisma.content.update({
+            where: { id: contentId },
+            data: { status: 'PUBLISHED', publishCount: { increment: 1 } },
+          });
+        }
 
         await reportComplete(taskId, {
           platform: 'xiaohongshu',
@@ -182,11 +199,30 @@ export function setupXhsCallbackRoutes() {
           completedAt: new Date(),
         },
       });
-      await moveToPublished(contentId, 'xiaohongshu');
-      await prisma.content.update({
-        where: { id: contentId },
-        data: { status: 'PUBLISHED', publishCount: { increment: 1 } },
+
+      // 标记 PublishPlan 完成
+      if (publishPlanId) {
+        await prisma.publishPlan.update({
+          where: { id: publishPlanId },
+          data: {
+            status: 'DONE',
+            publishedUrl: publishResult.publishedUrl,
+            finishedAt: new Date(),
+          },
+        });
+      }
+
+      // 检查是否所有发布计划都已完成
+      const remaining = await prisma.publishPlan.count({
+        where: { contentId, status: { notIn: ['DONE'] } },
       });
+      if (remaining === 0) {
+        await moveToPublished(contentId);
+        await prisma.content.update({
+          where: { id: contentId },
+          data: { status: 'PUBLISHED', publishCount: { increment: 1 } },
+        });
+      }
 
       await reportComplete(taskId, {
         platform: 'xiaohongshu',
@@ -207,6 +243,15 @@ export function setupXhsCallbackRoutes() {
           data: { status: 'FAILED', errorMessage: errMsg, completedAt: new Date() },
         })
         .catch(() => {});
+
+      if (publishPlanId) {
+        await prisma.publishPlan
+          .update({
+            where: { id: publishPlanId },
+            data: { status: 'FAILED', errorMessage: errMsg, finishedAt: new Date() },
+          })
+          .catch(() => {});
+      }
 
       await reportFail(taskId, 'PUBLISH_FAILED', errMsg);
       return { success: false, error: errMsg };
