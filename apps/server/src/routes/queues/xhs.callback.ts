@@ -1,12 +1,12 @@
 import { getLogger } from '@logtape/logtape';
 import { Elysia } from 'elysia';
 import { prisma } from '../../config/prisma';
+import { toXhsMcpPublishPayload } from '../../queues/publish-queue';
+import { getChannelRouter } from '../../services/channel-router';
 import { moveToPublished } from '../../services/content.service';
-import { getGatewayService } from '../../services/gateway.service';
 import { reportComplete, reportFail, reportProgress } from '../../services/queue-client';
-import { decryptCookies } from '../../utils/encryption';
+import type { PublishJobPayload } from '../../types/publisher';
 
-// HT-queue callback payload
 interface HtQueueCallbackPayload {
   jobId: string;
   name: string;
@@ -33,23 +33,57 @@ interface HtQueueCallbackPayload {
   };
 }
 
+async function publishViaMcp(
+  data: HtQueueCallbackPayload['data'],
+  taskId: string,
+  startTime: number,
+  log: ReturnType<typeof getLogger>
+): Promise<{ success: boolean; error?: string; publishedUrl?: string }> {
+  await reportProgress(taskId, 'resolving-publisher', 10, '正在选择发布渠道');
+
+  const account = await prisma.account.findUnique({
+    where: { id: data.accountId },
+    select: { name: true },
+  });
+  const accountName = data.accountName || account?.name || data.accountId;
+
+  const router = getChannelRouter();
+  const payload = toXhsMcpPublishPayload({
+    jobId: taskId,
+    accountId: data.accountId,
+    accountName,
+    action: data.action || 'publish',
+    content: data.content,
+  });
+
+  const publisher = router.resolve(payload);
+  log.info('Resolved MCP publisher', { publisher: publisher.name });
+
+  await reportProgress(taskId, 'publishing', 50, '正在通过 MCP 发布到小红书');
+  const result = await publisher.publish(payload);
+
+  if (!result.success) {
+    throw new Error(result.error || 'MCP 发布失败');
+  }
+
+  return { success: true, publishedUrl: result.url };
+}
+
 export function setupXhsCallbackRoutes() {
   const log = getLogger(['app', 'publish', 'xiaohongshu']);
 
   return new Elysia({ prefix: '/_internal/queues' }).post('/xhs', async ({ body }) => {
-    let publisher: any;
     let taskId = '';
     let contentId = '';
     let accountId = '';
-    let content: any;
     let startTime = 0;
+    let useFallback = false;
 
     try {
       const { data } = body as HtQueueCallbackPayload;
       taskId = data.taskId;
       contentId = data.contentId;
       accountId = data.accountId;
-      content = data.content;
       startTime = Date.now();
 
       if (!data?.taskId || !data?.contentId || !data?.accountId) {
@@ -58,116 +92,70 @@ export function setupXhsCallbackRoutes() {
       }
 
       log.info('Processing xhs publish callback', { taskId, contentId, accountId });
+      await reportProgress(taskId, 'preparing', 5, '准备发布');
 
-      await reportProgress(taskId, 'decrypting-cookies', 5, '正在解密 Cookie');
+      try {
+        const result = await publishViaMcp(data, taskId, startTime, log);
+        if (!result.success) throw new Error(result.error || 'MCP publish failed');
 
-      // 获取并解密 cookies
+        // 标记成功
+        await prisma.publishLog.updateMany({
+          where: { contentId, accountId },
+          data: { status: 'SUCCESS', publishedUrl: result.publishedUrl, completedAt: new Date() },
+        });
+        await moveToPublished(contentId, 'xiaohongshu');
+        await prisma.content.update({
+          where: { id: contentId },
+          data: { status: 'PUBLISHED', publishCount: { increment: 1 } },
+        });
+
+        await reportComplete(taskId, {
+          platform: 'xiaohongshu',
+          publishedUrl: result.publishedUrl,
+          duration: Date.now() - startTime,
+        });
+
+        return { success: true };
+      } catch (mcpError) {
+        const isNoPublisher = String(mcpError).includes('No publisher found');
+        if (!isNoPublisher) throw mcpError;
+
+        // 没有 MCP publisher，降级到本地 Playwright
+        log.warn('No MCP publisher found, falling back to local Playwright', { taskId });
+        useFallback = true;
+      }
+
+      // Fallback: local Playwright
+      await reportProgress(taskId, 'loading-browser', 15, '正在初始化本地浏览器');
+
+      const { XiaohongshuPublisher } = await import('../../publishers/xiaohongshu');
+      const publisher = new XiaohongshuPublisher({
+        accountId,
+        headless: process.env.PLAYWRIGHT_HEADLESS !== 'false',
+        timeout: 120000,
+      });
+      await publisher.initialize();
+
       const account = await prisma.account.findUnique({
         where: { id: accountId },
         select: { encryptedCookies: true, cookiePassword: true },
       });
 
-      let cookies:
-        | Array<{ name: string; value: string; domain: string; path?: string }>
-        | undefined;
       if (account?.encryptedCookies) {
-        const password =
-          account.cookiePassword || process.env.COOKIE_ENCRYPTION_KEY || 'default-password';
-        const decrypted = await decryptCookies(account.encryptedCookies, password);
-        cookies = (Array.isArray(decrypted) ? decrypted : []).map((c: Record<string, unknown>) => ({
-          name: String(c.name || ''),
-          value: String(c.value || ''),
-          domain: String(c.domain || ''),
-          path: c.path ? String(c.path) : undefined,
-        }));
-      }
-
-      const publishMode = process.env.PUBLISH_MODE || 'local';
-
-      if (publishMode === 'gateway') {
-        await reportProgress(taskId, 'calling-gateway', 30, '正在调用 Gateway 发布');
-
-        const gatewayService = getGatewayService();
-        const result = await gatewayService.publish({
-          platform: 'xiaohongshu',
-          contentId,
-          accountId,
-          publishLogId: data.publishLogId,
-          contentPath: content.basePath || '',
-          taskId,
-          cookies,
-        });
-
-        if (!result.success) {
-          if (data.publishLogId) {
-            await prisma.publishLog
-              .update({
-                where: { id: data.publishLogId },
-                data: { status: 'FAILED', errorMessage: result.error, completedAt: new Date() },
-              })
-              .catch(() => {});
-          }
-          await reportFail(taskId, 'GATEWAY_ERROR', result.error || 'Gateway publish failed');
-          return { success: false, error: result.error };
-        }
-
-        // Gateway 接受任务，更新 PublishLog 为 RUNNING
-        if (data.publishLogId) {
-          await prisma.publishLog.update({
-            where: { id: data.publishLogId },
-            data: { status: 'RUNNING', externalTaskId: result.taskId },
-          });
-        }
-
-        await reportProgress(taskId, 'gateway-accepted', 60, 'Gateway 已接受任务，等待回调');
-        await reportComplete(taskId, {
-          platform: 'xiaohongshu',
-          taskId: result.taskId,
-          duration: Date.now() - startTime,
-          note: 'Gateway accepted, result will arrive via webhook callback',
-        });
-
-        return { success: true };
-      }
-
-      // Local mode
-      await reportProgress(taskId, 'loading-browser', 10, '正在初始化浏览器');
-
-      const { XiaohongshuPublisher } = await import('../../publishers/xiaohongshu');
-      publisher = new XiaohongshuPublisher({
-        accountId,
-        headless: process.env.PLAYWRIGHT_HEADLESS !== 'false',
-        timeout: 120000,
-      });
-
-      await publisher.initialize();
-
-      if (account?.encryptedCookies) {
-        await reportProgress(taskId, 'loading-cookies', 15, '正在加载 Cookie');
+        await reportProgress(taskId, 'loading-cookies', 20, '正在加载 Cookie');
         const password =
           account.cookiePassword || process.env.COOKIE_ENCRYPTION_KEY || 'default-password';
         const loaded = await publisher.loadCookies(account.encryptedCookies, password);
-        if (!loaded) {
-          throw new Error('Cookie 加载失败');
-        }
+        if (!loaded) throw new Error('Cookie 加载失败');
       }
 
-      await reportProgress(taskId, 'checking-login', 20, '正在验证登录状态');
+      await reportProgress(taskId, 'checking-login', 25, '正在验证登录状态');
       const isLoggedIn = await publisher.checkLoginStatus();
-      if (!isLoggedIn) {
-        throw new Error('账号未登录或 Cookie 已过期');
-      }
+      if (!isLoggedIn) throw new Error('账号未登录或 Cookie 已过期');
 
-      await reportProgress(taskId, 'preparing-media', 40, '正在准备素材');
-      await reportProgress(taskId, 'publishing', 70, '正在发布到小红书');
-
+      await reportProgress(taskId, 'publishing', 60, '正在通过本地 Playwright 发布');
       const publishResult = await publisher.publish(data as unknown as Record<string, unknown>);
-
-      if (!publishResult.success) {
-        throw new Error(publishResult.error || '发布失败');
-      }
-
-      await reportProgress(taskId, 'saving-cookies', 95, '正在保存 Cookie');
+      if (!publishResult.success) throw new Error(publishResult.error || '发布失败');
 
       // 保存更新后的 Cookie
       try {
@@ -186,7 +174,6 @@ export function setupXhsCallbackRoutes() {
         log.warn('Failed to save cookies after publish', { error: String(e) });
       }
 
-      // 标记成功
       await prisma.publishLog.updateMany({
         where: { contentId, accountId },
         data: {
@@ -205,21 +192,15 @@ export function setupXhsCallbackRoutes() {
         platform: 'xiaohongshu',
         publishedUrl: publishResult.publishedUrl,
         duration: Date.now() - startTime,
-        cookieUpdated: true,
+        fallback: true,
       });
 
       await publisher.close();
       return { success: true };
     } catch (error) {
-      if (typeof publisher !== 'undefined') {
-        try {
-          await publisher.close();
-        } catch {}
-      }
       const errMsg = error instanceof Error ? error.message : String(error);
       log.error('XHS publish failed', { taskId, error: errMsg });
 
-      // 标记失败
       await prisma.publishLog
         .updateMany({
           where: { contentId, accountId },

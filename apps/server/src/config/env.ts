@@ -84,11 +84,7 @@ export function validateEnv(env: EnvInput = process.env): EnvValidationResult {
       }
     }
 
-    for (const key of [
-      'COOKIE_ENCRYPTION_KEY',
-      'COOKIE_ENCRYPTION_SALT',
-      'API_AUTH_TOKEN',
-    ]) {
+    for (const key of ['COOKIE_ENCRYPTION_KEY', 'COOKIE_ENCRYPTION_SALT', 'API_AUTH_TOKEN']) {
       if (isWeakSecret(env[key])) {
         errors.push(`${key} must be a non-placeholder secret in production`);
       }
