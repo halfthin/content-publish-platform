@@ -14,8 +14,6 @@ const PRODUCTION_REQUIRED_KEYS = [
   'COOKIE_ENCRYPTION_KEY',
   'COOKIE_ENCRYPTION_SALT',
   'API_AUTH_TOKEN',
-  'CPP_TO_GATEWAY_TOKEN',
-  'CPP_FROM_GATEWAY_TOKEN',
   'API_BASE_URL',
   'CONTENT_DIR',
 ] as const;
@@ -23,8 +21,6 @@ const PRODUCTION_REQUIRED_KEYS = [
 const WEAK_SECRET_VALUES = new Set([
   '',
   'change-me',
-  'your-gateway-token',
-  'your-callback-token',
   'your-32-char-secret-key-here!!!',
   'dev-key-change-in-production-32chars!!',
   'dev-salt',
@@ -92,15 +88,13 @@ export function validateEnv(env: EnvInput = process.env): EnvValidationResult {
       'COOKIE_ENCRYPTION_KEY',
       'COOKIE_ENCRYPTION_SALT',
       'API_AUTH_TOKEN',
-      'CPP_TO_GATEWAY_TOKEN',
-      'CPP_FROM_GATEWAY_TOKEN',
     ]) {
       if (isWeakSecret(env[key])) {
         errors.push(`${key} must be a non-placeholder secret in production`);
       }
     }
 
-    for (const key of ['DATABASE_URL', 'REDIS_URL', 'API_BASE_URL', 'OPENCLAW_GATEWAY_URL']) {
+    for (const key of ['DATABASE_URL', 'REDIS_URL', 'API_BASE_URL']) {
       if (isPresent(env[key]) && !isValidUrl(env[key])) {
         errors.push(`${key} must be a valid URL`);
       }

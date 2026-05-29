@@ -48,22 +48,11 @@ async function contentDirCheck(): Promise<ReadinessCheckResult> {
   return { status: 'ok' };
 }
 
-async function gatewayCheck(): Promise<ReadinessCheckResult> {
-  if (process.env.PUBLISH_MODE === 'local') {
-    return { status: 'warn', message: 'PUBLISH_MODE=local' };
-  }
-  if (!process.env.OPENCLAW_GATEWAY_URL) {
-    return { status: 'warn', message: 'OPENCLAW_GATEWAY_URL is not configured' };
-  }
-  return { status: 'ok' };
-}
-
 const defaultChecks: Record<string, ReadinessCheck> = {
   env: envCheck,
   database: databaseCheck,
   redis: redisCheck,
   contentDir: contentDirCheck,
-  gateway: gatewayCheck,
 };
 
 export function setupHealthRoutes(options: HealthRouteOptions = {}) {

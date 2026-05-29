@@ -82,7 +82,7 @@ export function setupXhsCallbackRoutes() {
         }));
       }
 
-      const publishMode = process.env.PUBLISH_MODE || 'gateway';
+      const publishMode = process.env.PUBLISH_MODE || 'local';
 
       if (publishMode === 'gateway') {
         await reportProgress(taskId, 'calling-gateway', 30, '正在调用 Gateway 发布');
