@@ -19,20 +19,41 @@ class JsonRpcError extends Error {
 }
 
 class XhsMcpClient {
+  private initialized = false;
+
   constructor(private readonly mcpUrl: string) {}
 
-  async callTool<T>(toolName: string, args: Record<string, unknown> = {}): Promise<T> {
-    const res = await fetch(this.mcpUrl, {
+  private async jsonRpc(method: string, params: unknown): Promise<Response> {
+    return fetch(this.mcpUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         jsonrpc: '2.0',
-        method: 'tools/call',
-        params: { name: toolName, arguments: args },
+        method,
+        params,
         id: crypto.randomUUID(),
       }),
       signal: AbortSignal.timeout(300_000),
     });
+  }
+
+  async initialize(): Promise<void> {
+    if (this.initialized) return;
+    const res = await this.jsonRpc('initialize', {
+      protocolVersion: '0.1.0',
+      capabilities: {},
+      clientInfo: { name: 'cpp', version: '1.0.0' },
+    });
+    if (!res.ok) throw new JsonRpcError(`Initialize failed: HTTP ${res.status}`, res.status);
+    const body = await res.json();
+    if (body.error)
+      throw new JsonRpcError(body.error.message || 'Initialize failed', body.error.code);
+    this.initialized = true;
+  }
+
+  async callTool<T>(toolName: string, args: Record<string, unknown> = {}): Promise<T> {
+    await this.initialize();
+    const res = await this.jsonRpc('tools/call', { name: toolName, arguments: args });
 
     if (!res.ok) {
       throw new JsonRpcError(`MCP HTTP ${res.status}`, res.status);
