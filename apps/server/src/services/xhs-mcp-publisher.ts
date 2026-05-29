@@ -19,14 +19,18 @@ class JsonRpcError extends Error {
 }
 
 class XhsMcpClient {
-  private initialized = false;
+  private sessionId: string | null = null;
 
   constructor(private readonly mcpUrl: string) {}
 
   private async jsonRpc(method: string, params: unknown): Promise<Response> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (this.sessionId) {
+      headers['Mcp-Session-Id'] = this.sessionId;
+    }
     return fetch(this.mcpUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         jsonrpc: '2.0',
         method,
@@ -38,9 +42,9 @@ class XhsMcpClient {
   }
 
   async initialize(): Promise<void> {
-    if (this.initialized) return;
+    if (this.sessionId) return;
     const res = await this.jsonRpc('initialize', {
-      protocolVersion: '0.1.0',
+      protocolVersion: '2025-06-18',
       capabilities: {},
       clientInfo: { name: 'cpp', version: '1.0.0' },
     });
@@ -48,7 +52,12 @@ class XhsMcpClient {
     const body = await res.json();
     if (body.error)
       throw new JsonRpcError(body.error.message || 'Initialize failed', body.error.code);
-    this.initialized = true;
+
+    // 捕获 Session ID
+    const sessionId = res.headers.get('Mcp-Session-Id');
+    if (sessionId) {
+      this.sessionId = sessionId;
+    }
   }
 
   async callTool<T>(toolName: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -90,16 +99,7 @@ export class XhsMcpPublisher implements Publisher {
 
         const result = await this.client.callTool<{ noteId?: string; noteUrl?: string }>(
           'publish_content',
-          {
-            title,
-            content,
-            images,
-            tags,
-            scheduleAt,
-            visibility,
-            isOriginal,
-            products,
-          }
+          { title, content, images, tags, scheduleAt, visibility, isOriginal, products }
         );
 
         return {
